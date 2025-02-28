@@ -11,7 +11,31 @@ const PORT = 8000;
 
 // Middleware
 app.use(cors());
+
+
 app.use(express.json());
+
+// Middleware
+const corsOptions = {
+  origin: ['https://e-workspace-peach.vercel.app', 'http://localhost:3000', 'http://localhost:3001'],
+  credentials: true,
+};
+app.use(cors(corsOptions));
+
+app.use((req, res, next) => {
+  const allowedOrigins = ['https://e-workspace-peach.vercel.app', 'http://localhost:3000',  'http://localhost:3001'];
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+      res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS,POST,PUT,DELETE');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, csrf-token');
+  next();
+});
+app.get('/', (req, res) => {
+  res.send('Welcome to the API root endpoint');
+});
 
 // Connect to database
 connectDB();
