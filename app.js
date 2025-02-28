@@ -17,13 +17,13 @@ app.use(express.json());
 
 // Middleware
 const corsOptions = {
-  origin: ['https://e-workspace-peach.vercel.app', 'http://localhost:3000', 'http://localhost:3001'],
+  origin: ['https://filescence-rho.vercel.app', 'http://localhost:3000', 'http://localhost:3001'],
   credentials: true,
 };
 app.use(cors(corsOptions));
 
 app.use((req, res, next) => {
-  const allowedOrigins = ['https://e-workspace-peach.vercel.app', 'http://localhost:3000',  'http://localhost:3001'];
+  const allowedOrigins = ['https://filescence-rho.vercel.app', 'http://localhost:3000',  'http://localhost:3001'];
   const origin = req.headers.origin;
   if (allowedOrigins.includes(origin)) {
       res.header('Access-Control-Allow-Origin', origin);
