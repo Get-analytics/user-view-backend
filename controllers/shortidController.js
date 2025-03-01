@@ -60,6 +60,7 @@ exports.getDocumentByShortId = async (req, res) => {
 
 
 
+
 exports.getAnalyticsPdf = async (req, res) => {
   console.log(req.body);
 
@@ -88,26 +89,123 @@ exports.getAnalyticsPdf = async (req, res) => {
       await userVisit.save();
     }
 
-    // ✅ Always create a new entry in the DB (instead of updating)
-    const analyticsData = new UserActivityPdf({
-      userVisit: userVisit._id, // Save the ObjectId of the UserVisit
-      userId, // Save the userId
-      pdfId,
-      sourceUrl,
-      totalPagesVisited,
-      totalTimeSpent,
-      pageTimeSpent,
-      selectedTexts,
-      totalClicks,
-      inTime: new Date(),
-      outTime: new Date(),
-      mostVisitedPage,
-      linkClicks,
-    });
+    // Check if the device is mobile
+    const isMobileDevice = device && /mobile/i.test(device);
 
-    await analyticsData.save(); // ✅ Always inserts a new document
+    // Check if userId exists in UserActivityPdf
+    let analyticsData = await UserActivityPdf.findOne({ userId, pdfId });
 
-    console.log(analyticsData, "data ")
+    if (analyticsData) {
+      if (isMobileDevice) {
+        // If the device is mobile, append data
+        console.log("Appending analytics data to existing document for mobile");
+
+        // Append the data (for mobile, we accumulate the data over time)
+        analyticsData.totalPagesVisited += totalPagesVisited;
+        analyticsData.totalTimeSpent += totalTimeSpent;
+
+        // Append or update pageTimeSpent (accumulating time for pages)
+        for (let page in pageTimeSpent) {
+          if (analyticsData.pageTimeSpent[page]) {
+            analyticsData.pageTimeSpent[page] += pageTimeSpent[page];
+          } else {
+            analyticsData.pageTimeSpent[page] = pageTimeSpent[page];
+          }
+        }
+
+        // Append or update selectedTexts (add more selected texts to the list)
+        selectedTexts.forEach(text => {
+          const existingText = analyticsData.selectedTexts.find(item => item.selectedText === text.selectedText && item.page === text.page);
+          if (existingText) {
+            existingText.count += 1; // Increment count if the text is already present
+          } else {
+            analyticsData.selectedTexts.push(text); // Add new selected text
+          }
+        });
+
+        // Accumulate total clicks
+        analyticsData.totalClicks += totalClicks;
+
+        // Update mostVisitedPage if necessary
+        if (mostVisitedPage && (!analyticsData.mostVisitedPage || analyticsData.pageTimeSpent[mostVisitedPage] > analyticsData.pageTimeSpent[analyticsData.mostVisitedPage])) {
+          analyticsData.mostVisitedPage = mostVisitedPage;
+        }
+
+        // Append link clicks
+        analyticsData.linkClicks.push(...linkClicks);
+
+        // Update inTime and outTime (the last time the data is sent)
+        analyticsData.outTime = new Date();
+
+        // Save the updated document
+        await analyticsData.save();
+      } else {
+        // If the device is not mobile, we can choose to update as normal
+        console.log("Updating analytics data for non-mobile device");
+
+        analyticsData.totalPagesVisited += totalPagesVisited;
+        analyticsData.totalTimeSpent += totalTimeSpent;
+
+        // Update pageTimeSpent (accumulating time for pages)
+        for (let page in pageTimeSpent) {
+          if (analyticsData.pageTimeSpent[page]) {
+            analyticsData.pageTimeSpent[page] += pageTimeSpent[page];
+          } else {
+            analyticsData.pageTimeSpent[page] = pageTimeSpent[page];
+          }
+        }
+
+        // Update selectedTexts
+        selectedTexts.forEach(text => {
+          const existingText = analyticsData.selectedTexts.find(item => item.selectedText === text.selectedText && item.page === text.page);
+          if (existingText) {
+            existingText.count += 1;
+          } else {
+            analyticsData.selectedTexts.push(text);
+          }
+        });
+
+        // Accumulate total clicks
+        analyticsData.totalClicks += totalClicks;
+
+        // Update mostVisitedPage if necessary
+        if (mostVisitedPage && (!analyticsData.mostVisitedPage || analyticsData.pageTimeSpent[mostVisitedPage] > analyticsData.pageTimeSpent[analyticsData.mostVisitedPage])) {
+          analyticsData.mostVisitedPage = mostVisitedPage;
+        }
+
+        // Append link clicks
+        analyticsData.linkClicks.push(...linkClicks);
+
+        // Update inTime and outTime
+        analyticsData.outTime = new Date();
+
+        // Save the updated document
+        await analyticsData.save();
+      }
+    } else {
+      // If no existing document found for the user, create a new one
+      console.log("Creating new analytics data document");
+
+      analyticsData = new UserActivityPdf({
+        userVisit: userVisit._id, // Save the ObjectId of the UserVisit
+        userId, // Save the userId
+        pdfId,
+        sourceUrl,
+        totalPagesVisited,
+        totalTimeSpent,
+        pageTimeSpent,
+        selectedTexts,
+        totalClicks,
+        inTime: new Date(),
+        outTime: new Date(),
+        mostVisitedPage,
+        linkClicks,
+      });
+
+      await analyticsData.save();
+    }
+
+    console.log(analyticsData, "Saved analytics data");
 
     res.status(200).json({ PdfAnalyticsdata: analyticsData });
   } catch (error) {
