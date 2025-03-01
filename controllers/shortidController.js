@@ -59,8 +59,6 @@ exports.getDocumentByShortId = async (req, res) => {
 
 
 
-
-
 exports.getAnalyticsPdf = async (req, res) => {
   console.log(req.body);
 
@@ -72,11 +70,9 @@ exports.getAnalyticsPdf = async (req, res) => {
   } = req.body;
 
   try {
-    // Check if UserVisit exists or create a new one
+    // 1. Ensure a UserVisit exists.
     let userVisit = await UserVisit.findOne({ userId });
-
     if (!userVisit) {
-      // If no UserVisit found, create a new one
       userVisit = new UserVisit({
         ip,
         location,
@@ -89,10 +85,24 @@ exports.getAnalyticsPdf = async (req, res) => {
       await userVisit.save();
     }
 
-    // ✅ Always create a new entry in the DB (instead of updating)
-    const analyticsData = new UserActivityPdf({
-      userVisit: userVisit._id, // Save the ObjectId of the UserVisit
-      userId, // Save the userId
+    // 2. Define today's boundaries.
+    // These dates are based on the server's local time.
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+
+    // 3. Delete any analytics document for this userId and pdfId that was created today.
+    // (We assume that the "inTime" field is stored as a Date.)
+    await UserActivityPdf.deleteMany({ 
+      userId, 
+      pdfId,
+      inTime: { $gte: startOfToday, $lt: endOfToday }
+    });
+
+    // 4. Create a new analytics document with the incoming payload.
+    const analyticsDoc = new UserActivityPdf({
+      userVisit: userVisit._id,
+      userId,
       pdfId,
       sourceUrl,
       totalPagesVisited,
@@ -104,17 +114,20 @@ exports.getAnalyticsPdf = async (req, res) => {
       outTime: new Date(),
       mostVisitedPage,
       linkClicks,
+      sessionClosed: false,
     });
 
-    await analyticsData.save(); // ✅ Always inserts a new document
+    await analyticsDoc.save();
 
-    console.log(analyticsData, "data ")
-
-    res.status(200).json({ PdfAnalyticsdata: analyticsData });
+    console.log(analyticsDoc, "new analytics data inserted");
+    res.status(200).json({ PdfAnalyticsdata: analyticsDoc });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+
+
 
 
 
@@ -211,11 +224,12 @@ exports.webViewAnalytics = async (req, res) => {
     }
 
     // Ensure pointerHeatmap is an array
-    const validatedPointerHeatmap = Array.isArray(pointerHeatmap) ? pointerHeatmap : [];
+    const validatedPointerHeatmap = Array.isArray(pointerHeatmap)
+      ? pointerHeatmap
+      : [];
 
-    // Check if UserVisit already exists for this user
+    // 1. Check if UserVisit already exists for this user
     let userVisit = await UserVisit.findOne({ userId });
-
     if (!userVisit) {
       // Create a new UserVisit record if it doesn't exist
       userVisit = new UserVisit({
@@ -230,7 +244,19 @@ exports.webViewAnalytics = async (req, res) => {
       await userVisit.save();
     }
 
-    // Create a new WebAnalytics entry (each request creates a new document)
+    // 2. Define today's boundaries (using server local time or UTC as needed)
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+
+    // 3. Delete any existing WebAnalytics record for this userVisit and webId created today.
+    await WebAnalytics.deleteMany({
+      webId,
+      userVisit: userVisit._id,
+      inTime: { $gte: startOfToday, $lt: endOfToday },
+    });
+
+    // 4. Create a new WebAnalytics entry with the incoming payload.
     const webAnalyticsData = new WebAnalytics({
       userVisit: userVisit._id, // Link to UserVisit
       webId,
@@ -241,10 +267,13 @@ exports.webViewAnalytics = async (req, res) => {
       pointerHeatmap: validatedPointerHeatmap,
     });
 
-    // Save the new WebAnalytics entry
+    // 5. Save the new WebAnalytics entry.
     await webAnalyticsData.save();
 
-    res.status(200).json({ message: "Web analytics data saved successfully", WebAnalyticsData: webAnalyticsData });
+    res.status(200).json({
+      message: "Web analytics data saved successfully",
+      WebAnalyticsData: webAnalyticsData,
+    });
   } catch (error) {
     console.error("Error saving web analytics:", error);
     res.status(500).json({ message: "Server error", error: error.message });
@@ -257,25 +286,56 @@ exports.Docxanalytics = async (req, res) => {
   console.log(req.body);
 
   const {
-    ip, location, userId, region, os, device, browser, pdfId, sourceUrl,
-    totalPagesVisited, totalTimeSpent, pageTimeSpent, selectedTexts,
-    totalClicks, mostVisitedPage, linkClicks
+    ip,
+    location,
+    userId,
+    region,
+    os,
+    device,
+    browser,
+    pdfId, // Use pdfId (or document id) as the unique identifier for the doc
+    sourceUrl,
+    totalPagesVisited,
+    totalTimeSpent,
+    pageTimeSpent,
+    selectedTexts,
+    totalClicks,
+    mostVisitedPage,
+    linkClicks
   } = req.body;
 
   try {
-    // Ensure a UserVisit entry exists for the user
+    // 1. Ensure a UserVisit entry exists for the user.
     let userVisit = await UserVisit.findOne({ userId });
-
     if (!userVisit) {
       userVisit = new UserVisit({
-        ip, location, userId, region, os, device, browser
+        ip,
+        location,
+        userId,
+        region,
+        os,
+        device,
+        browser
       });
       await userVisit.save();
     }
 
-    // Create a new analytics entry every time (no updating old records)
+    // 2. Define today's date boundaries.
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+
+    // 3. Delete any existing DocxAnalytics record for this user and pdfId created today.
+    await DocxAnalytics.deleteMany({
+      userId,
+      pdfId,
+      inTime: { $gte: startOfToday, $lt: endOfToday }
+    });
+
+    // 4. Create a new analytics entry with the incoming payload.
     const analyticsData = new DocxAnalytics({
-      userVisit: userVisit._id, // Save the ObjectId of the UserVisit
+      userVisit: userVisit._id,
+      userId,
       pdfId,
       sourceUrl,
       totalPagesVisited,
@@ -291,7 +351,8 @@ exports.Docxanalytics = async (req, res) => {
 
     await analyticsData.save();
 
-    res.status(200).json({ PdfAnalyticsdata: analyticsData });
+    console.log(analyticsData, "new Docx analytics data inserted");
+    res.status(200).json({ DocxAnalyticsdata: analyticsData });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -314,36 +375,51 @@ exports.Videoanalytics = async (req, res) => {
       browser,
       videoId,
       sourceUrl,
+      // inTime and outTime can be ignored if not used in your schema,
+      // since you're relying on createdAt for deletion.
       ...analyticsData
     } = req.body;
 
-    // Save user data (if not already saved or as required)
-    const userVisit = new UserVisit({
-      ip: ip || "",
-      location: location || "",
-      userId: userId || "",
-      region: region || "",
-      os: os || "",
-      device: device || "",
-      browser: browser || "",
-    });
-    await userVisit.save();
+    // 1. Ensure a UserVisit exists for this user.
+    let userVisit = await UserVisit.findOne({ userId });
+    if (!userVisit) {
+      userVisit = new UserVisit({
+        ip: ip || "",
+        location: location || "",
+        userId: userId || "",
+        region: region || "",
+        os: os || "",
+        device: device || "",
+        browser: browser || "",
+      });
+      await userVisit.save();
+    }
 
-    // Save video analytics data including videoId and sourceUrl.
-    // Link the analytics to the saved userVisit by including its _id.
+    // 2. Compute today's boundaries in UTC (matching your DB's createdAt timestamps).
+    const now = new Date();
+    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const endOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+
+    // 3. Delete any existing VideoAnalytics document for this user and videoId created today (using createdAt).
+    await VideoAnalytics.deleteMany({
+      videoId,
+      userVisit: userVisit._id,
+      createdAt: { $gte: startOfToday, $lt: endOfToday },
+    });
+
+    // 4. Create a new VideoAnalytics entry with the incoming payload.
     const videoAnalytics = new VideoAnalytics({
       ...analyticsData,
       videoId: videoId || "",
       sourceUrl: sourceUrl || "",
-      userVisit: userVisit._id, // Interlink by referencing the userVisit document ID
+      userVisit: userVisit._id,
+      // createdAt will be automatically set by Mongoose if using timestamps.
     });
     await videoAnalytics.save();
 
-    res.json({ userVisit, videoAnalytics });
+    res.status(200).json({ userVisit, videoAnalytics });
   } catch (error) {
     console.error("Error saving analytics:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
-
-
