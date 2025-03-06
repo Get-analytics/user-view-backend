@@ -32,7 +32,6 @@ const analyticsSchema = new mongoose.Schema(
     totalClicks: { type: Number, default: 0 },
     inTime: { type: Date, required: true },
     outTime: { type: Date, required: true },
-    mostVisitedPage: { type: String, required: true },
     linkClicks: { type: [linkClickSchema], default: [] }
   },
   { timestamps: true } // Automatically adds createdAt and updatedAt fields
