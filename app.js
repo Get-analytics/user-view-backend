@@ -45,6 +45,7 @@ app.use("/api/shortid", shortidRoutes);
 app.use("/api/UserBaseInfo", shortidRoutes);
 app.use("/api/PdfInfo", shortidRoutes);
 app.use("/api/test1", shortidRoutes);
+app.use("/api", shortidRoutes);
 app.use("/api/test2", shortidRoutes);
 app.use("/api/v1", shortidRoutes);
 
