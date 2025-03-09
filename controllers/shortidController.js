@@ -8,6 +8,7 @@ const DocxAnalytics = require("../models/Docxanalytics");
 const VideoAnalytics = require('../models/Videoanalytics');
 
 
+
 // Get document by shortId
 exports.getDocumentByShortId = async (req, res) => {
   const { id } = req.params;
@@ -56,6 +57,92 @@ exports.getDocumentByShortId = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+exports.userIdentification = async (req, res) => {
+  console.log("Received request body for user action update:", req.body);
+
+  const { userId, documentId, mimeType } = req.body;
+
+  // If userId is "Generating...", skip processing.
+  if (userId === "Generating...") {
+    console.log("UserId is 'Generating...', skipping database operations.");
+    return res
+      .status(200)
+      .json({ message: "User ID is 'Generating...', no action taken." });
+  }
+
+  try {
+    const currentTime = new Date();
+
+    // Step 1: Find the NewUser record for this user.
+    let newUserRecord = await NewUser.findOne({ userId });
+
+    if (!newUserRecord) {
+      console.log(`No NewUser record found for userId: ${userId}. Creating new record.`);
+      // Create new record with lastRequestTime set to currentTime.
+      newUserRecord = new NewUser({
+        userId,
+        documentIds: [documentId],
+        count: { [mimeType]: 1 },
+        lastRequestTime: currentTime
+      });
+      await newUserRecord.save();
+      console.log("New User Record Created.", newUserRecord);
+    } else {
+      // Check the stored lastRequestTime.
+      if (newUserRecord.lastRequestTime) {
+        const timeDiff = currentTime - new Date(newUserRecord.lastRequestTime); // Difference in ms
+        if (timeDiff < 60000) { // less than 1 minute
+          console.log("Request received within 1 minute; skipping update.");
+          return res.status(200).json({ message: "Request received within 1 minute, no update." });
+        }
+      }
+      
+      // Update lastRequestTime to current time
+      newUserRecord.lastRequestTime = currentTime;
+
+      // Check if documentId is already in the record
+      if (!newUserRecord.documentIds.includes(documentId)) {
+        newUserRecord.documentIds.push(documentId);
+        newUserRecord.count[mimeType] = 1;
+        console.log(`DocumentId ${documentId} added for userId: ${userId}. MimeType count initialized.`);
+      } else {
+        // Increment the mimeType count
+      
+        console.log(`DocumentId ${documentId} already exists for userId: ${userId}. MimeType count incremented.`);
+      }
+      await newUserRecord.save();
+    }
+
+    // Step 2: Update ReturnedUser record (using upsert) with similar time logic if needed.
+    // For simplicity, we're updating ReturnedUser without a time check.
+    const returnedUserUpdateResult = await ReturnedUser.updateOne(
+      { userId },
+      {
+        $addToSet: { documentIds: documentId },
+        $inc: { [`count.${mimeType}`]: 1 }
+      },
+      { upsert: true }
+    );
+
+    if (returnedUserUpdateResult.upsertedCount > 0) {
+      console.log("New ReturnedUser record created with documentId and mimeType.");
+    } else if (returnedUserUpdateResult.modifiedCount > 0) {
+      console.log("ReturnedUser record updated with new mimeType count.");
+    } else {
+      console.log("No changes to ReturnedUser record.");
+    }
+
+    res.status(200).json({ message: "User action updated or inserted successfully.", lastUpdate: currentTime.toISOString() });
+  } catch (error) {
+    console.error("Error during user action processing:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+
+
 
 
 
@@ -125,10 +212,6 @@ exports.getAnalyticsPdf = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
-
-
-
 
 
 
@@ -282,6 +365,8 @@ exports.webViewAnalytics = async (req, res) => {
 
 
 
+
+
 exports.Docxanalytics = async (req, res) => {
   console.log(req.body);
 
@@ -357,6 +442,9 @@ exports.Docxanalytics = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+
+
 
 
 
