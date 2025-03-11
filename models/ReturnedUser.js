@@ -8,11 +8,9 @@ const CountSchema = new mongoose.Schema({
 });
 
 const ReturnedUserSchema = new mongoose.Schema({
-  documentId: { type: String, required: true }, // Document IDs as an array
-  userId: { type: String, required: true },
+  userId: { type: String, required: true, unique: true },
   createdAt: { type: Date, default: Date.now },
-  count: { type: CountSchema, default: {} },
-  lastRequestTime: { type: Date },  // New field to store the last update time,
+  count: { type: CountSchema, default: {} }, // Track counts for each mime type
   __v: { type: Number, select: false }, // Exclude versioning field
 });
 
