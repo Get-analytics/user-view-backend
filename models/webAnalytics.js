@@ -13,6 +13,7 @@ const pointerHeatmapSchema = new mongoose.Schema(
 const webAnalyticsSchema = new mongoose.Schema(
   {
     userVisit: { type: mongoose.Schema.Types.ObjectId, ref: "UserVisit", required: true }, // Reference to UserVisit
+    userId: { type : String, required : true},
     webId: { type : String, required : true},
     sourceUrl: { type : String, required : true},
     inTime: { type: Date, required: true },
