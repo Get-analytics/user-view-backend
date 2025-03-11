@@ -82,6 +82,8 @@ const VideoAnalyticsSchema = new Schema(
       ref: "UserVisit",
       required: true,
     },
+    // New field added so that you can query by userId
+    userId: { type: String, required: true },
     totalWatchTime: { type: Number, required: true },
     playCount: { type: Number, required: true },
     pauseCount: { type: Number, required: true },
@@ -98,7 +100,8 @@ const VideoAnalyticsSchema = new Schema(
     download: { type: Boolean, required: true },
     currentPlayStart: { type: Number, default: null },
     totalWatchTimeFormatted: { type: String, required: true },
-    // New fields:
+    inTime: { type: Date, required: true },
+    outTime: { type: Date, required: true },
     videoId: { type: String, required: true },
     sourceUrl: { type: String, required: true },
   },
