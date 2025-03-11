@@ -8,6 +8,18 @@ const DocxAnalytics = require("../models/Docxanalytics");
 const VideoAnalytics = require('../models/Videoanalytics');
 
 
+// Helper function to fetch current location from backend (if needed)
+const getCurrentLocation = async (ip) => {
+  try {
+    const response = await fetch(`https://ip-api.com/json/${ip}`);
+    const data = await response.json();
+    return data.city || "Unknown";
+  } catch (error) {
+    console.error("Error fetching location:", error);
+    return "Unknown";
+  }
+};
+
 
 // Get document by shortId
 exports.getDocumentByShortId = async (req, res) => {
@@ -133,6 +145,7 @@ exports.userIdentification = async (req, res) => {
 
 
 
+
 exports.getAnalyticsPdf = async (req, res) => {
   console.log(req.body);
 
@@ -144,9 +157,11 @@ exports.getAnalyticsPdf = async (req, res) => {
   } = req.body;
 
   try {
-    // 1. Ensure a UserVisit exists.
-    let userVisit = await UserVisit.findOne({ userId });
-    if (!userVisit) {
+    // 1. Fetch the latest UserVisit for the user.
+    let userVisit = await UserVisit.findOne({ userId }).sort({ createdAt: -1 });
+
+    // 2. If no previous visit exists or if the location has changed, create a new UserVisit entry.
+    if (!userVisit || userVisit.location !== location) {
       userVisit = new UserVisit({
         ip,
         location,
@@ -159,21 +174,23 @@ exports.getAnalyticsPdf = async (req, res) => {
       await userVisit.save();
     }
 
-    // 2. Define today's boundaries.
-    // These dates are based on the server's local time.
-    const today = new Date();
-    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    // 3. Get the current timestamp.
+    const now = new Date();
 
-    // 3. Delete any analytics document for this userId and pdfId that was created today.
-    // (We assume that the "inTime" field is stored as a Date.)
-    await UserActivityPdf.deleteMany({ 
-      userId, 
-      pdfId,
-      inTime: { $gte: startOfToday, $lt: endOfToday }
-    });
+    // 4. Check if there's an existing analytics record (session) for this user and pdfId.
+    const latestRecord = await UserActivityPdf.findOne({ userId, pdfId }).sort({ outTime: -1 });
 
-    // 4. Create a new analytics document with the incoming payload.
+    // 5. Determine if it's a continuous session (within 12 to 20 seconds of the last session).
+    let continuousSession = false;
+    const timeDiff = now - latestRecord?.outTime;
+
+    if (latestRecord && timeDiff >= 12000 && timeDiff <= 20000) {
+      continuousSession = true;
+      // Delete the previous record if needed
+      await UserActivityPdf.deleteOne({ _id: latestRecord._id });
+    }
+
+    // 6. Create a new analytics document.
     const analyticsDoc = new UserActivityPdf({
       userVisit: userVisit._id,
       userId,
@@ -184,8 +201,8 @@ exports.getAnalyticsPdf = async (req, res) => {
       pageTimeSpent,
       selectedTexts,
       totalClicks,
-      inTime: new Date(),
-      outTime: new Date(),
+      inTime: continuousSession ? latestRecord.inTime : now,
+      outTime: now,
       mostVisitedPage,
       linkClicks,
       sessionClosed: false,
@@ -267,11 +284,11 @@ exports.ReturnedUserCount = async (req, res) => {
   }
 };
 
+
 exports.webViewAnalytics = async (req, res) => {
   console.log(req.body, "web analytics");
 
   try {
-    // Destructure request body
     const {
       ip,
       location,
@@ -298,46 +315,58 @@ exports.webViewAnalytics = async (req, res) => {
       ? pointerHeatmap
       : [];
 
-    // 1. Check if UserVisit already exists for this user
-    let userVisit = await UserVisit.findOne({ userId });
-    if (!userVisit) {
-      // Create a new UserVisit record if it doesn't exist
+    // Fetch the current location dynamically if not provided
+    let currentLocation = location;
+    if (!location) {
+      // Assume a function `getUserLocation(ip)` exists to get the location from the IP
+      currentLocation = await getUserLocation(ip); 
+    }
+
+    // 1. Fetch the latest UserVisit for this user
+    let userVisit = await UserVisit.findOne({ userId }).sort({ createdAt: -1 });
+
+    // 2. If no previous visit exists or the location has changed, create a new UserVisit entry
+    if (!userVisit || userVisit.location !== currentLocation) {
       userVisit = new UserVisit({
-        ip: ip || "Unknown",
-        location: location || "Unknown",
+        ip,
+        location: currentLocation,
         userId,
-        region: region || "Unknown",
-        os: os || "Unknown",
-        device: device || "Unknown",
-        browser: browser || "Unknown",
+        region,
+        os,
+        device,
+        browser,
       });
       await userVisit.save();
     }
 
-    // 2. Define today's boundaries (using server local time or UTC as needed)
-    const today = new Date();
-    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    // 3. Get the current timestamp
+    const now = new Date();
 
-    // 3. Delete any existing WebAnalytics record for this userVisit and webId created today.
-    await WebAnalytics.deleteMany({
-      webId,
-      userVisit: userVisit._id,
-      inTime: { $gte: startOfToday, $lt: endOfToday },
-    });
+    // 4. Fetch the latest analytics record for this user and webId
+    const latestRecord = await WebAnalytics.findOne({ userId, webId }).sort({ outTime: -1 });
 
-    // 4. Create a new WebAnalytics entry with the incoming payload.
+    // 5. Determine if it's a continuous session (within 12 to 20 seconds of the last session)
+    let continuousSession = false;
+    const timeDiff = now - latestRecord?.outTime;
+
+    if (latestRecord && timeDiff >= 12000 && timeDiff <= 20000) {
+      continuousSession = true;
+      // Delete the previous record to merge with the new one
+      await WebAnalytics.deleteOne({ _id: latestRecord._id });
+    }
+
+    // 6. Create a new WebAnalytics entry
     const webAnalyticsData = new WebAnalytics({
       userVisit: userVisit._id, // Link to UserVisit
       webId,
       sourceUrl,
-      inTime: new Date(inTime),
+      inTime: continuousSession ? latestRecord.inTime : new Date(inTime), // Keep old inTime for continuous sessions
       outTime: new Date(outTime),
       totalTimeSpent: totalTimeSpent || 0,
       pointerHeatmap: validatedPointerHeatmap,
     });
 
-    // 5. Save the new WebAnalytics entry.
+    // 7. Save the new WebAnalytics entry
     await webAnalyticsData.save();
 
     res.status(200).json({
@@ -354,6 +383,7 @@ exports.webViewAnalytics = async (req, res) => {
 
 
 
+
 exports.Docxanalytics = async (req, res) => {
   console.log(req.body);
 
@@ -365,7 +395,7 @@ exports.Docxanalytics = async (req, res) => {
     os,
     device,
     browser,
-    pdfId, // Use pdfId (or document id) as the unique identifier for the doc
+    pdfId, // Treating pdfId as a document ID
     sourceUrl,
     totalPagesVisited,
     totalTimeSpent,
@@ -377,9 +407,11 @@ exports.Docxanalytics = async (req, res) => {
   } = req.body;
 
   try {
-    // 1. Ensure a UserVisit entry exists for the user.
-    let userVisit = await UserVisit.findOne({ userId });
-    if (!userVisit) {
+    // 1. Fetch the latest UserVisit for the user.
+    let userVisit = await UserVisit.findOne({ userId }).sort({ createdAt: -1 });
+
+    // 2. If no previous visit exists or if the location has changed, create a new UserVisit entry.
+    if (!userVisit || userVisit.location !== location) {
       userVisit = new UserVisit({
         ip,
         location,
@@ -392,19 +424,23 @@ exports.Docxanalytics = async (req, res) => {
       await userVisit.save();
     }
 
-    // 2. Define today's date boundaries.
-    const today = new Date();
-    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    // 3. Get the current timestamp.
+    const now = new Date();
 
-    // 3. Delete any existing DocxAnalytics record for this user and pdfId created today.
-    await DocxAnalytics.deleteMany({
-      userId,
-      pdfId,
-      inTime: { $gte: startOfToday, $lt: endOfToday }
-    });
+    // 4. Fetch the latest analytics record for this user and document.
+    const latestRecord = await DocxAnalytics.findOne({ userId, pdfId }).sort({ outTime: -1 });
 
-    // 4. Create a new analytics entry with the incoming payload.
+    // 5. Determine if it's a continuous session (within 12 to 20 seconds of the last session).
+    let continuousSession = false;
+    const timeDiff = now - latestRecord?.outTime;
+
+    if (latestRecord && timeDiff >= 12000 && timeDiff <= 20000) {
+      continuousSession = true;
+      // Delete the previous record if needed.
+      await DocxAnalytics.deleteOne({ _id: latestRecord._id });
+    }
+
+    // 6. Create a new analytics entry.
     const analyticsData = new DocxAnalytics({
       userVisit: userVisit._id,
       userId,
@@ -415,8 +451,8 @@ exports.Docxanalytics = async (req, res) => {
       pageTimeSpent,
       selectedTexts,
       totalClicks,
-      inTime: new Date(),
-      outTime: new Date(),
+      inTime: continuousSession ? latestRecord.inTime : now, // Keep old inTime for continuous sessions
+      outTime: now,
       mostVisitedPage,
       linkClicks
     });
@@ -439,7 +475,6 @@ exports.Docxanalytics = async (req, res) => {
 
 exports.Videoanalytics = async (req, res) => {
   try {
-    // Destructure user and video analytics fields from req.body
     const {
       ip,
       location,
@@ -450,51 +485,74 @@ exports.Videoanalytics = async (req, res) => {
       browser,
       videoId,
       sourceUrl,
-      // inTime and outTime can be ignored if not used in your schema,
-      // since you're relying on createdAt for deletion.
+      totalTimeSpent,
+      totalClicks,
+      selectedTexts,
+      linkClicks,
+      outTime, // Provided outTime from the client
       ...analyticsData
     } = req.body;
 
-    // 1. Ensure a UserVisit exists for this user.
-    let userVisit = await UserVisit.findOne({ userId });
-    if (!userVisit) {
+    // 1. Fetch the latest UserVisit for the user.
+    let userVisit = await UserVisit.findOne({ userId }).sort({ createdAt: -1 });
+
+    // 2. If no previous visit exists or if the location has changed, create a new UserVisit entry.
+    if (!userVisit || userVisit.location !== location) {
       userVisit = new UserVisit({
-        ip: ip || "",
-        location: location || "",
-        userId: userId || "",
-        region: region || "",
-        os: os || "",
-        device: device || "",
-        browser: browser || "",
+        ip,
+        location,
+        userId,
+        region,
+        os,
+        device,
+        browser,
       });
       await userVisit.save();
     }
 
-    // 2. Compute today's boundaries in UTC (matching your DB's createdAt timestamps).
+    // 3. Get the current timestamp.
     const now = new Date();
-    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const endOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
 
-    // 3. Delete any existing VideoAnalytics document for this user and videoId created today (using createdAt).
-    await VideoAnalytics.deleteMany({
-      videoId,
-      userVisit: userVisit._id,
-      createdAt: { $gte: startOfToday, $lt: endOfToday },
-    });
+    // 4. Check if there's an existing analytics record (session) for this user and videoId.
+    const latestRecord = await VideoAnalytics.findOne({ userId, videoId }).sort({ outTime: -1 });
 
-    // 4. Create a new VideoAnalytics entry with the incoming payload.
+    // 5. Determine if it's a continuous session (within 12 to 20 seconds of the last session).
+    let continuousSession = false;
+    const timeDiff = now - latestRecord?.outTime;
+    if (latestRecord && timeDiff >= 12000 && timeDiff <= 20000) {
+      continuousSession = true;
+      // Delete the previous record if needed
+      await VideoAnalytics.deleteOne({ _id: latestRecord._id });
+    }
+
+    // 6. Use the provided outTime if available; otherwise, use current time.
+    const finalOutTime = outTime ? new Date(outTime) : now;
+
+    // 7. Create a new VideoAnalytics document.
     const videoAnalytics = new VideoAnalytics({
-      ...analyticsData,
-      videoId: videoId || "",
-      sourceUrl: sourceUrl || "",
       userVisit: userVisit._id,
-      // createdAt will be automatically set by Mongoose if using timestamps.
+      userId,
+      videoId,
+      sourceUrl,
+      totalTimeSpent,
+      totalClicks,
+      selectedTexts,
+      linkClicks,
+      inTime: continuousSession ? latestRecord.inTime : now,
+      outTime: finalOutTime,
+      sessionClosed: false,
+      ...analyticsData,
     });
+
     await videoAnalytics.save();
 
-    res.status(200).json({ userVisit, videoAnalytics });
+    console.log("New video analytics data inserted:", videoAnalytics);
+    res.status(200).json({ message: "Video analytics saved successfully", videoAnalytics });
   } catch (error) {
-    console.error("Error saving analytics:", error);
+    console.error("Error saving video analytics:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
+
+
