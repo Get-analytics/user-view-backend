@@ -358,6 +358,7 @@ exports.webViewAnalytics = async (req, res) => {
     // 6. Create a new WebAnalytics entry
     const webAnalyticsData = new WebAnalytics({
       userVisit: userVisit._id, // Link to UserVisit
+      userId,  
       webId,
       sourceUrl,
       inTime: continuousSession ? latestRecord.inTime : new Date(inTime), // Keep old inTime for continuous sessions
@@ -553,6 +554,3 @@ exports.Videoanalytics = async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
-
-
-
