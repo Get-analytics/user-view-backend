@@ -63,63 +63,49 @@ exports.userIdentification = async (req, res) => {
 
   const { userId, documentId, mimeType } = req.body;
 
-  // If userId is "Generating...", skip processing.
   if (userId === "Generating...") {
     console.log("UserId is 'Generating...', skipping database operations.");
-    return res
-      .status(200)
-      .json({ message: "User ID is 'Generating...', no action taken." });
+    return res.status(200).json({ message: "User ID is 'Generating...', no action taken." });
   }
 
   try {
     const currentTime = new Date();
 
-    // Step 1: Find the NewUser record for this user.
-    let newUserRecord = await NewUser.findOne({ userId });
+    // Step 1: Check if a record exists for this user with the same documentId.
+    let newUserRecord = await NewUser.findOne({ userId, documentId });
 
     if (!newUserRecord) {
-      console.log(`No NewUser record found for userId: ${userId}. Creating new record.`);
-      // Create new record with lastRequestTime set to currentTime.
+      console.log(`No record found for userId: ${userId} with documentId: ${documentId}. Creating new record.`);
+
+      // Create a new record with count always set to 1
       newUserRecord = new NewUser({
         userId,
-        documentIds: [documentId],
-        count: { [mimeType]: 1 },
+        documentId,
+        count: { [mimeType]: 1 }, // Always 1 for new users
         lastRequestTime: currentTime
       });
-      await newUserRecord.save();
-      console.log("New User Record Created.", newUserRecord);
-    } else {
-      // Check the stored lastRequestTime.
-      if (newUserRecord.lastRequestTime) {
-        const timeDiff = currentTime - new Date(newUserRecord.lastRequestTime); // Difference in ms
-        if (timeDiff < 60000) { // less than 1 minute
-          console.log("Request received within 1 minute; skipping update.");
-          return res.status(200).json({ message: "Request received within 1 minute, no update." });
-        }
-      }
-      
-      // Update lastRequestTime to current time
-      newUserRecord.lastRequestTime = currentTime;
 
-      // Check if documentId is already in the record
-      if (!newUserRecord.documentIds.includes(documentId)) {
-        newUserRecord.documentIds.push(documentId);
-        newUserRecord.count[mimeType] = 1;
-        console.log(`DocumentId ${documentId} added for userId: ${userId}. MimeType count initialized.`);
-      } else {
-        // Increment the mimeType count
-      
-        console.log(`DocumentId ${documentId} already exists for userId: ${userId}. MimeType count incremented.`);
+      await newUserRecord.save();
+      console.log("New User Record Created:", newUserRecord);
+    } else {
+      const timeDiff = currentTime - new Date(newUserRecord.lastRequestTime);
+
+      if (timeDiff < 60000) {
+        console.log("Request received within 1 minute; skipping update.");
+        return res.status(200).json({ message: "Request received within 1 minute, no update." });
       }
+
+      // Update lastRequestTime only, without changing the count
+      newUserRecord.lastRequestTime = currentTime;
+      console.log(`Last request time updated for userId: ${userId}, documentId: ${documentId}.`);
+
       await newUserRecord.save();
     }
 
-    // Step 2: Update ReturnedUser record (using upsert) with similar time logic if needed.
-    // For simplicity, we're updating ReturnedUser without a time check.
+    // Step 2: Update ReturnedUser collection, incrementing count
     const returnedUserUpdateResult = await ReturnedUser.updateOne(
-      { userId },
+      { userId, documentId },
       {
-        $addToSet: { documentIds: documentId },
         $inc: { [`count.${mimeType}`]: 1 }
       },
       { upsert: true }
@@ -133,7 +119,8 @@ exports.userIdentification = async (req, res) => {
       console.log("No changes to ReturnedUser record.");
     }
 
-    res.status(200).json({ message: "User action updated or inserted successfully.", lastUpdate: currentTime.toISOString() });
+    res.status(200).json({ message: "User action updated successfully.", lastUpdate: currentTime.toISOString() });
+
   } catch (error) {
     console.error("Error during user action processing:", error);
     res.status(500).json({ message: "Server error", error: error.message });
