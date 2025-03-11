@@ -8,7 +8,7 @@ const CountSchema = new mongoose.Schema({
 });
 
 const ReturnedUserSchema = new mongoose.Schema({
-  documentIds: { type: String, required: true }, // Document IDs as an array
+  documentId: { type: String, required: true }, // Document IDs as an array
   userId: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   count: { type: CountSchema, default: {} },
