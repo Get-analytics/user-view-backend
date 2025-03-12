@@ -185,12 +185,12 @@ exports.getAnalyticsPdf = async (req, res) => {
     if (records.length > 0) {
       const latestRecord = records[0]; // Get the most recent record
       const timeDiff = now - latestRecord.outTime;
-
+      console.log(timeDiff, "timediff")
       if (timeDiff >= 10000 && timeDiff <= 30000) {
         continuousSession = true;
 
         // Delete all previous records if they match the condition
-        await UserActivityPdf.deleteMany({ userId, pdfId });
+        await UserActivityPdf.deleteOne({ userId, pdfId });
       }
     }
 
