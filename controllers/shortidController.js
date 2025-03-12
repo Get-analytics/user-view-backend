@@ -177,20 +177,24 @@ exports.getAnalyticsPdf = async (req, res) => {
     // 3. Get the current timestamp.
     const now = new Date();
 
-    // 4. Check if there's an existing analytics record (session) for this user and pdfId.
-    const latestRecord = await UserActivityPdf.findOne({ userId, pdfId }).sort({ outTime: -1 });
+    // 4. Find all analytics records for the user and pdfId.
+    const records = await UserActivityPdf.find({ userId, pdfId }).sort({ outTime: -1 });
 
-    // 5. Determine if it's a continuous session (within 12 to 20 seconds of the last session).
     let continuousSession = false;
-    const timeDiff = now - latestRecord?.outTime;
 
-    if (latestRecord && timeDiff >= 10000 && timeDiff <= 25000) {
-      continuousSession = true;
-      // Delete the previous record if needed
-      await UserActivityPdf.deleteOne({ _id: latestRecord._id });
+    if (records.length > 0) {
+      const latestRecord = records[0]; // Get the most recent record
+      const timeDiff = now - latestRecord.outTime;
+
+      if (timeDiff >= 10000 && timeDiff <= 30000) {
+        continuousSession = true;
+
+        // Delete all previous records if they match the condition
+        await UserActivityPdf.deleteMany({ userId, pdfId });
+      }
     }
 
-    // 6. Create a new analytics document.
+    // 5. Create a new analytics document.
     const analyticsDoc = new UserActivityPdf({
       userVisit: userVisit._id,
       userId,
@@ -201,7 +205,7 @@ exports.getAnalyticsPdf = async (req, res) => {
       pageTimeSpent,
       selectedTexts,
       totalClicks,
-      inTime: continuousSession ? latestRecord.inTime : now,
+      inTime: continuousSession ? records[0].inTime : now,
       outTime: now,
       mostVisitedPage,
       linkClicks,
@@ -216,6 +220,7 @@ exports.getAnalyticsPdf = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 
 
