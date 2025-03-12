@@ -184,7 +184,7 @@ exports.getAnalyticsPdf = async (req, res) => {
     let continuousSession = false;
     const timeDiff = now - latestRecord?.outTime;
 
-    if (latestRecord && timeDiff >= 12000 && timeDiff <= 20000) {
+    if (latestRecord && timeDiff >= 10000 && timeDiff <= 25000) {
       continuousSession = true;
       // Delete the previous record if needed
       await UserActivityPdf.deleteOne({ _id: latestRecord._id });
@@ -349,7 +349,7 @@ exports.webViewAnalytics = async (req, res) => {
     let continuousSession = false;
     const timeDiff = now - latestRecord?.outTime;
 
-    if (latestRecord && timeDiff >= 12000 && timeDiff <= 20000) {
+    if (latestRecord && timeDiff >= 10000 && timeDiff <= 25000) {
       continuousSession = true;
       // Delete the previous record to merge with the new one
       await WebAnalytics.deleteOne({ _id: latestRecord._id });
@@ -435,7 +435,7 @@ exports.Docxanalytics = async (req, res) => {
     let continuousSession = false;
     const timeDiff = now - latestRecord?.outTime;
 
-    if (latestRecord && timeDiff >= 12000 && timeDiff <= 20000) {
+    if (latestRecord && timeDiff >= 10000 && timeDiff <= 25000) {
       continuousSession = true;
       // Delete the previous record if needed.
       await DocxAnalytics.deleteOne({ _id: latestRecord._id });
@@ -532,7 +532,7 @@ exports.Videoanalytics = async (req, res) => {
 
     // 6. Determine if it's a continuous session (within 12 to 20 seconds of the last session).
     let continuousSession = false;
-    if (timeDiff !== null && timeDiff >= 12000 && timeDiff <= 20000) {
+    if (timeDiff !== null && timeDiff >= 10000 && timeDiff <= 25000) {
       continuousSession = true;
       // Delete the previous record if needed
       await VideoAnalytics.deleteOne({ _id: latestRecord._id });
