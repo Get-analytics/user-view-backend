@@ -8,12 +8,15 @@ const CountSchema = new mongoose.Schema({
 });
 
 const ReturnedUserSchema = new mongoose.Schema({
-  documentId: { type: String, required: true }, // Document IDs as an array
-  userId: { type: String, required: true },
+  documentId: { type: String, required: true },
+  userId: { type: String, required: true }, // No unique index
   createdAt: { type: Date, default: Date.now },
-  count: { type: CountSchema, default: {} }, // MimeType counts
-  lastRequestTime: { type: Date },  // New field to store the last update time
-  __v: { type: Number, select: false }, // Exclude versioning field
+  count: { type: CountSchema, default: {} },
+  lastRequestTime: { type: Date },
+  __v: { type: Number, select: false }
 });
+
+// Ensure there is NO unique constraint
+ReturnedUserSchema.index({ userId: 1, documentId: 1 }, { unique: false });
 
 module.exports = mongoose.model("ReturnedUser", ReturnedUserSchema);
