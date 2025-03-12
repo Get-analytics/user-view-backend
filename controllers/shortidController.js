@@ -177,20 +177,26 @@ exports.getAnalyticsPdf = async (req, res) => {
     // 3. Get the current timestamp.
     const now = new Date();
 
-    // 4. Find all analytics records for the user and pdfId.
-    const records = await UserActivityPdf.find({ userId, pdfId }).sort({ outTime: -1 });
+    // 4. Find the most recent analytics record for the user and pdfId.
+    const latestRecord = await UserActivityPdf.findOne({ userId, pdfId }).sort({ outTime: -1 });
 
     let continuousSession = false;
 
-    if (records.length > 0) {
-      const latestRecord = records[0]; // Get the most recent record
+    if (latestRecord) {
       const timeDiff = now - latestRecord.outTime;
-      console.log(timeDiff, "timediff")
-      if (timeDiff >= 10000 && timeDiff <= 30000) {
+      console.log(`Time Difference: ${timeDiff}ms`);
+
+      if (timeDiff >= 10000 && timeDiff <= 25000) {
         continuousSession = true;
 
-        // Delete all previous records if they match the condition
-        await UserActivityPdf.deleteOne({ userId, pdfId });
+        // Delete only the last record that matches the condition
+        const deletedRecord = await UserActivityPdf.findOneAndDelete({ _id: latestRecord._id });
+
+        if (deletedRecord) {
+          console.log("Deleted Record:", deletedRecord);
+        } else {
+          console.log("No record matched for deletion.");
+        }
       }
     }
 
@@ -205,7 +211,7 @@ exports.getAnalyticsPdf = async (req, res) => {
       pageTimeSpent,
       selectedTexts,
       totalClicks,
-      inTime: continuousSession ? records[0].inTime : now,
+      inTime: continuousSession ? latestRecord.inTime : now,
       outTime: now,
       mostVisitedPage,
       linkClicks,
@@ -214,14 +220,13 @@ exports.getAnalyticsPdf = async (req, res) => {
 
     await analyticsDoc.save();
 
-    console.log(analyticsDoc, "new analytics data inserted");
+    console.log("New analytics data inserted:", analyticsDoc);
     res.status(200).json({ PdfAnalyticsdata: analyticsDoc });
   } catch (error) {
+    console.error("Error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
-
 
 
 exports.NewUserCount = async (req, res) => {
