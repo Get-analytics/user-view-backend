@@ -209,7 +209,7 @@ exports.getAnalyticsPdf = async (req, res) => {
       outTime: now,
       mostVisitedPage,
       linkClicks,
-      sessionClosed: false,
+   
     });
 
     await analyticsDoc.save();
