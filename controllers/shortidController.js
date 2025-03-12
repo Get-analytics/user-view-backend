@@ -474,6 +474,8 @@ exports.Docxanalytics = async (req, res) => {
 
 
 
+
+
 exports.Videoanalytics = async (req, res) => {
   try {
     const {
@@ -514,22 +516,34 @@ exports.Videoanalytics = async (req, res) => {
     // 3. Get the current timestamp.
     const now = new Date();
 
-    // 4. Check if there's an existing analytics record (session) for this user and videoId.
-    const latestRecord = await VideoAnalytics.findOne({ userId, videoId }).sort({ outTime: -1 });
+    // 4. Fetch the latest video analytics record for this user and videoId.
+    const latestRecords = await VideoAnalytics.find({ userId, videoId }).sort({ outTime: -1 });
+    const latestRecord = latestRecords.length > 0 ? latestRecords[0] : null;
 
-    // 5. Determine if it's a continuous session (within 12 to 20 seconds of the last session).
+    console.log(latestRecord, "last record");
+
+    // 5. Calculate time difference
+    let timeDiff = null;
+    if (latestRecord && latestRecord.outTime) {
+      timeDiff = now - new Date(latestRecord.outTime);
+    }
+
+    console.log(timeDiff, "timediff");
+
+    // 6. Determine if it's a continuous session (within 12 to 20 seconds of the last session).
     let continuousSession = false;
-    const timeDiff = now - latestRecord?.outTime;
-    if (latestRecord && timeDiff >= 12000 && timeDiff <= 20000) {
+    if (timeDiff !== null && timeDiff >= 12000 && timeDiff <= 20000) {
       continuousSession = true;
       // Delete the previous record if needed
       await VideoAnalytics.deleteOne({ _id: latestRecord._id });
     }
 
-    // 6. Use the provided outTime if available; otherwise, use current time.
+    console.log(outTime, "outtime");
+
+    // 7. Use the provided outTime if available; otherwise, use current time.
     const finalOutTime = outTime ? new Date(outTime) : now;
 
-    // 7. Create a new VideoAnalytics document.
+    // 8. Create a new VideoAnalytics document.
     const videoAnalytics = new VideoAnalytics({
       userVisit: userVisit._id,
       userId,
@@ -554,3 +568,4 @@ exports.Videoanalytics = async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
