@@ -153,12 +153,14 @@ exports.getAnalyticsPdf = async (req, res) => {
     ip, location, userId, region, os, device, browser, 
     pdfId, sourceUrl, totalPagesVisited, totalTimeSpent, 
     pageTimeSpent, selectedTexts, totalClicks, mostVisitedPage, 
-    linkClicks, inTime, outTime 
+    linkClicks 
   } = req.body;
 
   try {
     // 1. Fetch the latest UserVisit for the user.
     let userVisit = await UserVisit.findOne({ userId }).sort({ createdAt: -1 });
+
+    // 2. If no previous visit exists or if the location has changed, create a new UserVisit entry.
     if (!userVisit || userVisit.location !== location) {
       userVisit = new UserVisit({
         ip,
@@ -172,74 +174,52 @@ exports.getAnalyticsPdf = async (req, res) => {
       await userVisit.save();
     }
 
-    // 2. Get the current timestamp.
+    // 3. Get the current timestamp.
     const now = new Date();
 
-    // 3. Find the most recent analytics record for this user and PDF.
-    let analyticsDoc = await UserActivityPdf.findOne({ userId, pdfId }).sort({ outTime: -1 });
+    // 4. Find all analytics records for the user and pdfId.
+    const records = await UserActivityPdf.find({ userId, pdfId }).sort({ outTime: -1 });
 
-    if (analyticsDoc) {
-      // Safely update pageTimeSpent by ensuring all keys are strings and prevent $ from appearing.
-      const updatedPageTimeSpent = {};
-      for (const [key, value] of Object.entries(pageTimeSpent)) {
-        const safeKey = String(key); // Ensure key is a string
-        updatedPageTimeSpent[safeKey] = (updatedPageTimeSpent[safeKey] || 0) + value;
+    let continuousSession = false;
+
+    if (records.length > 0) {
+      const latestRecord = records[0]; // Get the most recent record
+      const timeDiff = now - latestRecord.outTime;
+      console.log(timeDiff, "timediff")
+      if (timeDiff >= 10000 && timeDiff <= 30000) {
+        continuousSession = true;
+
+        // Delete all previous records if they match the condition
+        await UserActivityPdf.deleteOne({ userId, pdfId });
       }
-
-      // Directly update the record with new values.
-      analyticsDoc = await UserActivityPdf.findOneAndUpdate(
-        { _id: analyticsDoc._id },
-        {
-          $set: {
-            outTime: now,
-            mostVisitedPage: mostVisitedPage, // Replace with new value
-            pageTimeSpent: updatedPageTimeSpent,
-            totalPagesVisited: totalPagesVisited, // Direct update
-            totalTimeSpent: totalTimeSpent,       // Direct update
-            totalClicks: totalClicks,             // Direct update
-          },
-          $push: {
-            linkClicks: { $each: linkClicks || [] },
-            selectedTexts: { $each: selectedTexts || [] },
-          },
-        },
-        { new: true }
-      );
-    } else {
-      // Prepare a safe version of pageTimeSpent for new documents (no dynamic $ keys).
-      const safePageTimeSpent = {};
-      for (const [key, value] of Object.entries(pageTimeSpent)) {
-        const safeKey = String(key); // Ensure key is a string
-        safePageTimeSpent[safeKey] = value;
-      }
-
-      // Create a new analytics document if none exists.
-      analyticsDoc = new UserActivityPdf({
-        userVisit: userVisit._id,
-        userId,
-        pdfId,
-        sourceUrl,
-        totalPagesVisited,
-        totalTimeSpent,
-        pageTimeSpent: safePageTimeSpent,
-        selectedTexts,
-        totalClicks,
-        inTime, // Use provided inTime
-        outTime: now,
-        mostVisitedPage,
-        linkClicks,
-      });
-      await analyticsDoc.save();
     }
 
-    console.log("Updated analytics data:", analyticsDoc);
+    // 5. Create a new analytics document.
+    const analyticsDoc = new UserActivityPdf({
+      userVisit: userVisit._id,
+      userId,
+      pdfId,
+      sourceUrl,
+      totalPagesVisited,
+      totalTimeSpent,
+      pageTimeSpent,
+      selectedTexts,
+      totalClicks,
+      inTime: continuousSession ? records[0].inTime : now,
+      outTime: now,
+      mostVisitedPage,
+      linkClicks,
+      sessionClosed: false,
+    });
+
+    await analyticsDoc.save();
+
+    console.log(analyticsDoc, "new analytics data inserted");
     res.status(200).json({ PdfAnalyticsdata: analyticsDoc });
   } catch (error) {
-    console.error("Error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
 
 exports.NewUserCount = async (req, res) => {
   try {
