@@ -437,7 +437,7 @@ exports.Docxanalytics = async (req, res) => {
     let continuousSession = false;
     const timeDiff = now - latestRecord?.outTime;
 
-    if (latestRecord && timeDiff >= 10000 && timeDiff <= 25000) {
+    if (latestRecord && timeDiff >= 10000 && timeDiff <= 50000) {
       continuousSession = true;
       // Delete the previous record if needed.
       await DocxAnalytics.deleteOne({ _id: latestRecord._id });
@@ -468,12 +468,6 @@ exports.Docxanalytics = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
-
-
-
-
-
 
 
 
