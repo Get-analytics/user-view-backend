@@ -528,7 +528,7 @@ exports.Videoanalytics = async (req, res) => {
 
     // 6. Determine if it's a continuous session (within 12 to 20 seconds of the last session).
     let continuousSession = false;
-    if (timeDiff !== null && timeDiff >= 10000 && timeDiff <= 25000) {
+    if (timeDiff !== null && timeDiff >= 10000 && timeDiff <= 60000) {
       continuousSession = true;
       // Delete the previous record if needed
       await VideoAnalytics.deleteOne({ _id: latestRecord._id });
