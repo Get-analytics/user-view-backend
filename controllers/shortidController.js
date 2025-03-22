@@ -358,7 +358,7 @@ exports.webViewAnalytics = async (req, res) => {
     let currentLocation = location;
     if (!location) {
       // Assume a function `getUserLocation(ip)` exists to get the location from the IP
-      currentLocation = await getUserLocation(ip); 
+      currentLocation = await getUserLocation(ip);
     }
 
     // 1. Fetch the latest UserVisit for this user
@@ -382,25 +382,48 @@ exports.webViewAnalytics = async (req, res) => {
     const now = new Date();
 
     // 4. Fetch the latest analytics record for this user and webId
-    const latestRecord = await WebAnalytics.findOne({ userId, webId }).sort({ outTime: -1 });
+    const latestRecord = await WebAnalytics.findOne({ userId, webId }).sort({
+      outTime: -1,
+    });
 
-    // 5. Determine if it's a continuous session (within 12 to 20 seconds of the last session)
-    let continuousSession = false;
-    const timeDiff = now - latestRecord?.outTime;
+    if (latestRecord) {
+      const timeDiff = now - latestRecord.outTime;
+      console.log(timeDiff, "timediff");
 
-    if (latestRecord && timeDiff >= 10000 && timeDiff <= 25000) {
-      continuousSession = true;
-      // Delete the previous record to merge with the new one
-      await WebAnalytics.deleteOne({ _id: latestRecord._id });
+      // 5. If session is within 10s-25s and totalTimeSpent is greater, update the record
+      if (timeDiff >= 10000 && timeDiff <= 50000) {
+        if (totalTimeSpent > latestRecord.totalTimeSpent) {
+          console.log("Updating existing WebAnalytics record...");
+
+          // Update the latest record with the new request data
+          await WebAnalytics.updateOne(
+            { _id: latestRecord._id },
+            {
+              $set: {
+                sourceUrl,
+                outTime: new Date(outTime),
+                totalTimeSpent,
+                pointerHeatmap: validatedPointerHeatmap,
+              },
+            }
+          );
+
+          return res.status(200).json({
+            message: "Web analytics record updated successfully",
+            WebAnalyticsData: { ...req.body, outTime },
+          });
+        }
+      }
     }
 
-    // 6. Create a new WebAnalytics entry
+    // 6. If session is out of range or totalTimeSpent is not greater, create a new record
+    console.log("Creating a new WebAnalytics record...");
     const webAnalyticsData = new WebAnalytics({
       userVisit: userVisit._id, // Link to UserVisit
-      userId,  
+      userId,
       webId,
       sourceUrl,
-      inTime: continuousSession ? latestRecord.inTime : new Date(inTime), // Keep old inTime for continuous sessions
+      inTime: new Date(inTime),
       outTime: new Date(outTime),
       totalTimeSpent: totalTimeSpent || 0,
       pointerHeatmap: validatedPointerHeatmap,
@@ -410,7 +433,7 @@ exports.webViewAnalytics = async (req, res) => {
     await webAnalyticsData.save();
 
     res.status(200).json({
-      message: "Web analytics data saved successfully",
+      message: "New Web analytics record created successfully",
       WebAnalyticsData: webAnalyticsData,
     });
   } catch (error) {
@@ -418,8 +441,6 @@ exports.webViewAnalytics = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
-
 
 
 
