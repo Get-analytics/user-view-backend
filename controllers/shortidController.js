@@ -443,7 +443,7 @@ exports.Docxanalytics = async (req, res) => {
     selectedTexts,
     totalClicks,
     mostVisitedPage,
-    linkClicks
+    linkClicks,
   } = req.body;
 
   try {
@@ -459,7 +459,7 @@ exports.Docxanalytics = async (req, res) => {
         region,
         os,
         device,
-        browser
+        browser,
       });
       await userVisit.save();
     }
@@ -470,17 +470,43 @@ exports.Docxanalytics = async (req, res) => {
     // 4. Fetch the latest analytics record for this user and document.
     const latestRecord = await DocxAnalytics.findOne({ userId, pdfId }).sort({ outTime: -1 });
 
-    // 5. Determine if it's a continuous session (within 12 to 20 seconds of the last session).
-    let continuousSession = false;
-    const timeDiff = now - latestRecord?.outTime;
+    if (latestRecord) {
+      const timeDiff = now - latestRecord.outTime;
+      console.log(timeDiff, "timediff");
 
-    if (latestRecord && timeDiff >= 10000 && timeDiff <= 50000) {
-      continuousSession = true;
-      // Delete the previous record if needed.
-      await DocxAnalytics.deleteOne({ _id: latestRecord._id });
+      // 5. If the time difference is between 10s and 50s and totalTimeSpent is greater, update the last record.
+      if (timeDiff >= 10000 && timeDiff <= 50000) {
+        if (totalTimeSpent > latestRecord.totalTimeSpent) {
+          console.log("Updating existing DocxAnalytics record...");
+
+          // Update the latest record with the new request data
+          await DocxAnalytics.updateOne(
+            { _id: latestRecord._id },
+            {
+              $set: {
+                sourceUrl,
+                totalPagesVisited,
+                totalTimeSpent,
+                pageTimeSpent,
+                selectedTexts,
+                totalClicks,
+                outTime: now, // Update outTime with the current timestamp
+                mostVisitedPage,
+                linkClicks,
+              },
+            }
+          );
+
+          return res.status(200).json({
+            message: "DocxAnalytics record updated successfully",
+            DocxAnalyticsdata: { ...req.body, outTime: now },
+          });
+        }
+      }
     }
 
-    // 6. Create a new analytics entry.
+    // 6. If the time is out of range or totalTimeSpent is less/equal, create a new analytics document.
+    console.log("Creating a new DocxAnalytics record...");
     const analyticsData = new DocxAnalytics({
       userVisit: userVisit._id,
       userId,
@@ -491,21 +517,25 @@ exports.Docxanalytics = async (req, res) => {
       pageTimeSpent,
       selectedTexts,
       totalClicks,
-      inTime: continuousSession ? latestRecord.inTime : now, // Keep old inTime for continuous sessions
+      inTime: now,
       outTime: now,
       mostVisitedPage,
-      linkClicks
+      linkClicks,
     });
 
     await analyticsData.save();
 
-    console.log(analyticsData, "new Docx analytics data inserted");
-    res.status(200).json({ DocxAnalyticsdata: analyticsData });
+    // 7. Return the created record.
+    console.log(analyticsData, "New Docx analytics data inserted");
+    res.status(200).json({
+      message: "New DocxAnalytics record created successfully",
+      DocxAnalyticsdata: analyticsData,
+    });
   } catch (error) {
+    console.error("Error:", error.message);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
 
 
 
