@@ -149,11 +149,23 @@ exports.userIdentification = async (req, res) => {
 exports.getAnalyticsPdf = async (req, res) => {
   console.log(req.body);
 
-  const { 
-    ip, location, userId, region, os, device, browser, 
-    pdfId, sourceUrl, totalPagesVisited, totalTimeSpent, 
-    pageTimeSpent, selectedTexts, totalClicks, mostVisitedPage, 
-    linkClicks 
+  const {
+    ip,
+    location,
+    userId,
+    region,
+    os,
+    device,
+    browser,
+    pdfId,
+    sourceUrl,
+    totalPagesVisited,
+    totalTimeSpent,
+    pageTimeSpent,
+    selectedTexts,
+    totalClicks,
+    mostVisitedPage,
+    linkClicks,
   } = req.body;
 
   try {
@@ -177,24 +189,46 @@ exports.getAnalyticsPdf = async (req, res) => {
     // 3. Get the current timestamp.
     const now = new Date();
 
-    // 4. Find all analytics records for the user and pdfId.
-    const records = await UserActivityPdf.find({ userId, pdfId }).sort({ outTime: -1 });
+    // 4. Find the latest analytics record for the user and pdfId.
+    const latestRecord = await UserActivityPdf.findOne({ userId, pdfId }).sort({ outTime: -1 });
 
-    let continuousSession = false;
-
-    if (records.length > 0) {
-      const latestRecord = records[0]; // Get the most recent record
+    if (latestRecord) {
       const timeDiff = now - latestRecord.outTime;
-      console.log(timeDiff, "timediff")
-      if (timeDiff >= 10000 && timeDiff <= 50000) {
-        continuousSession = true;
+      console.log(timeDiff, "timediff");
 
-        // Delete all previous records if they match the condition
-        await UserActivityPdf.deleteOne({ userId, pdfId });
+      // 5. If the time difference is between 10s and 50s and totalTimeSpent is greater, update the last record.
+      if (timeDiff >= 10000 && timeDiff <= 50000) {
+        if (totalTimeSpent > latestRecord.totalTimeSpent) {
+          console.log("Updating existing record...");
+
+          // Update the latest record with the new request data
+          await UserActivityPdf.updateOne(
+            { _id: latestRecord._id },
+            {
+              $set: {
+                sourceUrl,
+                totalPagesVisited,
+                totalTimeSpent,
+                pageTimeSpent,
+                selectedTexts,
+                totalClicks,
+                outTime: now, // Update outTime with the current timestamp
+                mostVisitedPage,
+                linkClicks,
+              },
+            }
+          );
+
+          return res.status(200).json({
+            message: "Record updated successfully",
+            PdfAnalyticsdata: { ...req.body, outTime: now },
+          });
+        }
       }
     }
 
-    // 5. Create a new analytics document.
+    // 6. If the time is out of range or totalTimeSpent is less/equal, create a new analytics document.
+    console.log("Creating a new record...");
     const analyticsDoc = new UserActivityPdf({
       userVisit: userVisit._id,
       userId,
@@ -205,18 +239,21 @@ exports.getAnalyticsPdf = async (req, res) => {
       pageTimeSpent,
       selectedTexts,
       totalClicks,
-      inTime: continuousSession ? records[0].inTime : now,
+      inTime: now,
       outTime: now,
       mostVisitedPage,
       linkClicks,
-   
     });
 
     await analyticsDoc.save();
 
-    console.log(analyticsDoc, "new analytics data inserted");
-    res.status(200).json({ PdfAnalyticsdata: analyticsDoc });
+    // 7. Return the created record.
+    res.status(200).json({
+      message: "New record created successfully",
+      PdfAnalyticsdata: analyticsDoc,
+    });
   } catch (error) {
+    console.error("Error:", error.message);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
