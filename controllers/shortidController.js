@@ -197,7 +197,7 @@ exports.getAnalyticsPdf = async (req, res) => {
       console.log(timeDiff, "timediff");
 
       // 5. If the time difference is between 10s and 50s and totalTimeSpent is greater, update the last record.
-      if (timeDiff >= 10000 && timeDiff <= 50000) {
+      if (timeDiff >= 5000 && timeDiff <= 50000) {
         if (totalTimeSpent > latestRecord.totalTimeSpent) {
           console.log("Updating existing record...");
 
