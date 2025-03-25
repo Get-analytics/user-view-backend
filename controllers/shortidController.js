@@ -456,7 +456,7 @@ exports.Docxanalytics = async (req, res) => {
     os,
     device,
     browser,
-    pdfId, // Treating pdfId as a document ID
+    pdfId, // Treating pdfId as a document ID, rename to docxId for consistency
     sourceUrl,
     totalPagesVisited,
     totalTimeSpent,
@@ -488,15 +488,15 @@ exports.Docxanalytics = async (req, res) => {
     // 3. Get the current timestamp.
     const now = new Date();
 
-    // 4. Fetch the latest analytics record for this user and document.
+    // 4. Fetch the latest analytics record for this user and document (docxId).
     const latestRecord = await DocxAnalytics.findOne({ userId, pdfId }).sort({ outTime: -1 });
 
     if (latestRecord) {
       const timeDiff = now - latestRecord.outTime;
       console.log(timeDiff, "timediff");
 
-      // 5. If the time difference is between 10s and 50s and totalTimeSpent is greater, update the last record.
-      if (timeDiff >= 10000 && timeDiff <= 50000) {
+      // 5. If the time difference is between 100ms and 60s and totalTimeSpent is greater, update the last record.
+      if (timeDiff >= 100 && timeDiff <= 60000) {
         if (totalTimeSpent > latestRecord.totalTimeSpent) {
           console.log("Updating existing DocxAnalytics record...");
 
@@ -531,7 +531,7 @@ exports.Docxanalytics = async (req, res) => {
     const analyticsData = new DocxAnalytics({
       userVisit: userVisit._id,
       userId,
-      pdfId,
+      pdfId, // Consider renaming to docxId in the DB model for clarity
       sourceUrl,
       totalPagesVisited,
       totalTimeSpent,
@@ -557,7 +557,6 @@ exports.Docxanalytics = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
 
 
 exports.Videoanalytics = async (req, res) => {
