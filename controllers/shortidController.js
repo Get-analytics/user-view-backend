@@ -572,10 +572,19 @@ exports.Videoanalytics = async (req, res) => {
     browser,
     videoId,
     sourceUrl,
-    totalTimeSpent,
-    totalClicks,
-    selectedTexts,
-    linkClicks,
+    totalWatchTime,
+    playCount,
+    pauseCount,
+    seekCount,
+    pauseResumeEvents,
+    skipEvents,
+    jumpEvents,
+    speedEvents,
+    currentSpeedEvent,
+    fullscreenEvents,
+    download,
+    currentPlayStart,
+    totalWatchTimeFormatted,
     outTime, // Provided outTime from the client
     ...analyticsData
   } = req.body;
@@ -608,9 +617,11 @@ exports.Videoanalytics = async (req, res) => {
       const timeDiff = now - new Date(latestRecord.outTime);
       console.log(timeDiff, "timediff");
 
-      // 5. If the time difference is between 100ms and 60s and totalTimeSpent is greater, update the last record.
+      // 5. If the time difference is between 100ms and 60s and totalWatchTime is greater, update the last record.
       if (timeDiff >= 100 && timeDiff <= 60000) {
-        if (totalTimeSpent > latestRecord.totalTimeSpent) {
+        console.log('Time difference is within the range.');
+        console.log(totalWatchTime, latestRecord.totalWatchTime, "watch time")
+        if (totalWatchTime >=latestRecord.totalWatchTime) {
           console.log("Updating existing VideoAnalytics record...");
 
           // Update the latest record with the new request data
@@ -619,10 +630,19 @@ exports.Videoanalytics = async (req, res) => {
             {
               $set: {
                 sourceUrl,
-                totalTimeSpent,
-                totalClicks,
-                selectedTexts,
-                linkClicks,
+                totalWatchTime,
+                playCount,
+                pauseCount,
+                seekCount,
+                pauseResumeEvents,
+                skipEvents,
+                jumpEvents,
+                speedEvents,
+                currentSpeedEvent,
+                fullscreenEvents,
+                download,
+                currentPlayStart,
+                totalWatchTimeFormatted,
                 outTime: now, // Update outTime with the current timestamp
                 ...analyticsData,
               },
@@ -637,17 +657,26 @@ exports.Videoanalytics = async (req, res) => {
       }
     }
 
-    // 6. If the time is out of range or totalTimeSpent is less/equal, create a new analytics document.
+    // 6. If the time is out of range or totalWatchTime is less/equal, create a new analytics document.
     console.log("Creating a new VideoAnalytics record...");
     const videoAnalytics = new VideoAnalytics({
       userVisit: userVisit._id,
       userId,
       videoId,
       sourceUrl,
-      totalTimeSpent,
-      totalClicks,
-      selectedTexts,
-      linkClicks,
+      totalWatchTime,
+      playCount,
+      pauseCount,
+      seekCount,
+      pauseResumeEvents,
+      skipEvents,
+      jumpEvents,
+      speedEvents,
+      currentSpeedEvent,
+      fullscreenEvents,
+      download,
+      currentPlayStart,
+      totalWatchTimeFormatted,
       inTime: now,
       outTime: now,
       sessionClosed: false,
@@ -667,5 +696,3 @@ exports.Videoanalytics = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
-
