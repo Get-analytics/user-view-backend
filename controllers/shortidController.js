@@ -560,25 +560,27 @@ exports.Docxanalytics = async (req, res) => {
 
 
 exports.Videoanalytics = async (req, res) => {
-  try {
-    const {
-      ip,
-      location,
-      userId,
-      region,
-      os,
-      device,
-      browser,
-      videoId,
-      sourceUrl,
-      totalTimeSpent,
-      totalClicks,
-      selectedTexts,
-      linkClicks,
-      outTime, // Provided outTime from the client
-      ...analyticsData
-    } = req.body;
+  console.log(req.body);
 
+  const {
+    ip,
+    location,
+    userId,
+    region,
+    os,
+    device,
+    browser,
+    videoId,
+    sourceUrl,
+    totalTimeSpent,
+    totalClicks,
+    selectedTexts,
+    linkClicks,
+    outTime, // Provided outTime from the client
+    ...analyticsData
+  } = req.body;
+
+  try {
     // 1. Fetch the latest UserVisit for the user.
     let userVisit = await UserVisit.findOne({ userId }).sort({ createdAt: -1 });
 
@@ -600,33 +602,43 @@ exports.Videoanalytics = async (req, res) => {
     const now = new Date();
 
     // 4. Fetch the latest video analytics record for this user and videoId.
-    const latestRecords = await VideoAnalytics.find({ userId, videoId }).sort({ outTime: -1 });
-    const latestRecord = latestRecords.length > 0 ? latestRecords[0] : null;
+    const latestRecord = await VideoAnalytics.findOne({ userId, videoId }).sort({ outTime: -1 });
 
-    console.log(latestRecord, "last record");
+    if (latestRecord) {
+      const timeDiff = now - new Date(latestRecord.outTime);
+      console.log(timeDiff, "timediff");
 
-    // 5. Calculate time difference
-    let timeDiff = null;
-    if (latestRecord && latestRecord.outTime) {
-      timeDiff = now - new Date(latestRecord.outTime);
+      // 5. If the time difference is between 100ms and 60s and totalTimeSpent is greater, update the last record.
+      if (timeDiff >= 100 && timeDiff <= 60000) {
+        if (totalTimeSpent > latestRecord.totalTimeSpent) {
+          console.log("Updating existing VideoAnalytics record...");
+
+          // Update the latest record with the new request data
+          await VideoAnalytics.updateOne(
+            { _id: latestRecord._id },
+            {
+              $set: {
+                sourceUrl,
+                totalTimeSpent,
+                totalClicks,
+                selectedTexts,
+                linkClicks,
+                outTime: now, // Update outTime with the current timestamp
+                ...analyticsData,
+              },
+            }
+          );
+
+          return res.status(200).json({
+            message: "Video analytics record updated successfully",
+            VideoAnalyticsdata: { ...req.body, outTime: now },
+          });
+        }
+      }
     }
 
-    console.log(timeDiff, "timediff");
-
-    // 6. Determine if it's a continuous session (within 12 to 20 seconds of the last session).
-    let continuousSession = false;
-    if (timeDiff !== null && timeDiff >= 10000 && timeDiff <= 45000) {
-      continuousSession = true;
-      // Delete the previous record if needed
-      await VideoAnalytics.deleteOne({ _id: latestRecord._id });
-    }
-
-    console.log(outTime, "outtime");
-
-    // 7. Use the provided outTime if available; otherwise, use current time.
-    const finalOutTime = outTime ? new Date(outTime) : now;
-
-    // 8. Create a new VideoAnalytics document.
+    // 6. If the time is out of range or totalTimeSpent is less/equal, create a new analytics document.
+    console.log("Creating a new VideoAnalytics record...");
     const videoAnalytics = new VideoAnalytics({
       userVisit: userVisit._id,
       userId,
@@ -636,19 +648,24 @@ exports.Videoanalytics = async (req, res) => {
       totalClicks,
       selectedTexts,
       linkClicks,
-      inTime: continuousSession ? latestRecord.inTime : now,
-      outTime: finalOutTime,
+      inTime: now,
+      outTime: now,
       sessionClosed: false,
       ...analyticsData,
     });
 
     await videoAnalytics.save();
 
-    console.log("New video analytics data inserted:", videoAnalytics);
-    res.status(200).json({ message: "Video analytics saved successfully", videoAnalytics });
+    // 7. Return the created record.
+    console.log(videoAnalytics, "New video analytics data inserted");
+    res.status(200).json({
+      message: "New VideoAnalytics record created successfully",
+      VideoAnalyticsdata: videoAnalytics,
+    });
   } catch (error) {
-    console.error("Error saving video analytics:", error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("Error:", error.message);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
