@@ -586,8 +586,16 @@ exports.Videoanalytics = async (req, res) => {
     currentPlayStart,
     totalWatchTimeFormatted,
     outTime, // Provided outTime from the client
+    inTime,  // Optionally provided inTime from the client
     ...analyticsData
   } = req.body;
+
+  // If totalWatchTime is 0, do not store the record.
+  if (totalWatchTime === 0) {
+    return res.status(200).json({
+      message: "Watch time is zero. No analytics record stored.",
+    });
+  }
 
   try {
     // 1. Fetch the latest UserVisit for the user.
@@ -610,6 +618,9 @@ exports.Videoanalytics = async (req, res) => {
     // 3. Get the current timestamp.
     const now = new Date();
 
+    // Use provided inTime if available; otherwise, use the current time.
+    const entryTimeToStore = inTime ? new Date(inTime) : now;
+
     // 4. Fetch the latest video analytics record for this user and videoId.
     const latestRecord = await VideoAnalytics.findOne({ userId, videoId }).sort({ outTime: -1 });
 
@@ -619,12 +630,13 @@ exports.Videoanalytics = async (req, res) => {
 
       // 5. If the time difference is between 100ms and 60s and totalWatchTime is greater, update the last record.
       if (timeDiff >= 100 && timeDiff <= 60000) {
-        console.log('Time difference is within the range.');
-        console.log(totalWatchTime, latestRecord.totalWatchTime, "watch time")
-        if (totalWatchTime >=latestRecord.totalWatchTime) {
+        console.log("Time difference is within the range.");
+        console.log(totalWatchTime, latestRecord.totalWatchTime, "watch time");
+        if (totalWatchTime >= latestRecord.totalWatchTime) {
           console.log("Updating existing VideoAnalytics record...");
 
-          // Update the latest record with the new request data
+          // Update the latest record with the new request data.
+          // inTime remains as it was originally stored.
           await VideoAnalytics.updateOne(
             { _id: latestRecord._id },
             {
@@ -677,7 +689,7 @@ exports.Videoanalytics = async (req, res) => {
       download,
       currentPlayStart,
       totalWatchTimeFormatted,
-      inTime: now,
+      inTime: entryTimeToStore, // Use provided inTime or current time if not provided
       outTime: now,
       sessionClosed: false,
       ...analyticsData,
