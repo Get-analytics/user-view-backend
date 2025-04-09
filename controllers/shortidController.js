@@ -23,7 +23,7 @@ const getCurrentLocation = async (ip) => {
 
 // Get document by shortId
 exports.getDocumentByShortId = async (req, res) => {
-  const { id } = req.params;
+  const { id } = req.params; 
   console.
 
   // === Get Referrer Only ===
