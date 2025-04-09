@@ -24,6 +24,7 @@ const getCurrentLocation = async (ip) => {
 // Get document by shortId
 exports.getDocumentByShortId = async (req, res) => {
   const { id } = req.params;
+  console.
 
   // === Get Referrer Only ===
   const referrer = req.get("Referer") || req.headers.referer || "";
@@ -65,36 +66,6 @@ exports.getDocumentByShortId = async (req, res) => {
 
 exports.userIdentification = async (req, res) => {
 
-  console.log(req.ip, "ip address");
-  console.log("ShortId:", id);
-  
-  // Retrieve the referrer from the request headers.
-  const referrer = req.get("Referer") || req.headers.referer || "";
-  
-  if (referrer) {
-    try {
-      // Use the URL API to parse the referrer URL.
-      const refUrl = new URL(referrer);
-      const host = refUrl.hostname;
-      console.log("User came from:", host);
-      
-      // Optionally, you can add logic to further identify known platforms:
-      if (host.includes("instagram.com")) {
-        console.log("User came from Instagram");
-      } else if (host.includes("youtube.com")) {
-        console.log("User came from YouTube");
-      } else if (host.includes("medium.com")) {
-        console.log("User came from Medium");
-      } else {
-        console.log("User came from another platform:", host);
-      }
-    } catch (err) {
-      console.error("Error parsing referrer:", err);
-    }
-  } else {
-    console.log("No referrer header found.");
-  }
-  console.log("Received request body for user action update:", req.body);
 
   const { userId, documentId, mimeType } = req.body;
 
