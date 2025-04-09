@@ -24,22 +24,16 @@ const getCurrentLocation = async (ip) => {
 // Get document by shortId
 exports.getDocumentByShortId = async (req, res) => {
   const { id } = req.params;
-  
-  // Log the user's IP address and the requested shortId.
-  console.log(req.ip, "ip address");
-  console.log("ShortId:", id);
-  
-  // Retrieve the referrer from the request headers.
+
+  // === Get Referrer Only ===
   const referrer = req.get("Referer") || req.headers.referer || "";
-  
   if (referrer) {
     try {
-      // Use the URL API to parse the referrer URL.
       const refUrl = new URL(referrer);
       const host = refUrl.hostname;
-      console.log("User came from:", host);
-      
-      // Optionally, you can add logic to further identify known platforms:
+      console.log("Referrer host:", host);
+
+      // Optional: Identify platform
       if (host.includes("instagram.com")) {
         console.log("User came from Instagram");
       } else if (host.includes("youtube.com")) {
@@ -50,16 +44,15 @@ exports.getDocumentByShortId = async (req, res) => {
         console.log("User came from another platform:", host);
       }
     } catch (err) {
-      console.error("Error parsing referrer:", err);
+      console.error("Invalid referrer URL:", err.message);
     }
   } else {
     console.log("No referrer header found.");
   }
 
+  // === Proceed with fetching the document ===
   try {
     const document = await ShortId.findOne({ shortId: id });
-    console.log("Document:", document);
-
     if (!document) {
       return res.status(404).json({ message: "Document not found" });
     }
