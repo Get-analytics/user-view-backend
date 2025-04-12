@@ -191,7 +191,7 @@ exports.getAnalyticsPdf = async (req, res) => {
       console.log(timeDiff, "timediff");
 
       // 5. If the time difference is between 10s and 50s and totalTimeSpent is greater, update the last record.
-      if (timeDiff >= 100 && timeDiff <= 60000) {
+      if (timeDiff >= 0 && timeDiff <= 60000) {
         if (totalTimeSpent > latestRecord.totalTimeSpent) {
           console.log("Updating existing record...");
 
@@ -385,7 +385,7 @@ exports.webViewAnalytics = async (req, res) => {
       console.log(timeDiff, "timediff");
 
       // 5. If session is within 10s-25s and totalTimeSpent is greater, update the record
-      if (timeDiff >= 10000 && timeDiff <= 50000) {
+      if (timeDiff >= 0 && timeDiff <= 50000) {
         if (totalTimeSpent > latestRecord.totalTimeSpent) {
           console.log("Updating existing WebAnalytics record...");
 
@@ -490,7 +490,7 @@ exports.Docxanalytics = async (req, res) => {
       console.log(timeDiff, "timediff");
 
       // 5. If the time difference is between 100ms and 60s and totalTimeSpent is greater, update the last record.
-      if (timeDiff >= 100 && timeDiff <= 60000) {
+      if (timeDiff >= 0 && timeDiff <= 60000) {
         if (totalTimeSpent > latestRecord.totalTimeSpent) {
           console.log("Updating existing DocxAnalytics record...");
 
@@ -623,7 +623,7 @@ exports.Videoanalytics = async (req, res) => {
       console.log(timeDiff, "timediff");
 
       // 5. If the time difference is between 100ms and 60s and totalWatchTime is greater, update the last record.
-      if (timeDiff >= 100 && timeDiff <= 60000) {
+      if (timeDiff >= 0 && timeDiff <= 60000) {
         console.log("Time difference is within the range.");
         console.log(totalWatchTime, latestRecord.totalWatchTime, "watch time");
         if (totalWatchTime >= latestRecord.totalWatchTime) {
