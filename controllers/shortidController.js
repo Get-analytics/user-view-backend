@@ -160,6 +160,7 @@ exports.getAnalyticsPdf = async (req, res) => {
     totalClicks,
     mostVisitedPage,
     linkClicks,
+    absenceHistory = [],
   } = req.body;
 
   try {
@@ -181,16 +182,30 @@ exports.getAnalyticsPdf = async (req, res) => {
     }
 
     // 3. Get the current timestamp.
-    const now = new Date();
+    let now = new Date();
 
     // 4. Find the latest analytics record for the user and pdfId.
     const latestRecord = await UserActivityPdf.findOne({ userId, pdfId }).sort({ outTime: -1 });
 
-    if (latestRecord) {
-      const timeDiff = now - latestRecord.outTime;
+    // 5. Determine the correct time to use for diff calculation
+    let compareTime = null;
+
+    if (absenceHistory.length > 0) {
+      const latestAbsence = absenceHistory[absenceHistory.length - 1];
+      if (latestAbsence.returnTime) {
+        compareTime = new Date(latestAbsence.returnTime);
+      }
+    } else if (latestRecord?.outTime) {
+      compareTime = new Date(latestRecord.outTime);
+    }
+
+    if (latestRecord && compareTime) {
+      const timeDiff = now - compareTime;
+      console.log(compareTime, "compare time")
+      console.log(now, "now time")
       console.log(timeDiff, "timediff");
 
-      // 5. If the time difference is between 10s and 50s and totalTimeSpent is greater, update the last record.
+      // 6. If the time difference is between 10s and 60s and totalTimeSpent is greater, update the last record.
       if (timeDiff >= 0 && timeDiff <= 60000) {
         if (totalTimeSpent > latestRecord.totalTimeSpent) {
           console.log("Updating existing record...");
@@ -206,9 +221,10 @@ exports.getAnalyticsPdf = async (req, res) => {
                 pageTimeSpent,
                 selectedTexts,
                 totalClicks,
-                outTime: now, // Update outTime with the current timestamp
+                outTime: now,
                 mostVisitedPage,
                 linkClicks,
+                absenceHistory,
               },
             }
           );
@@ -221,7 +237,7 @@ exports.getAnalyticsPdf = async (req, res) => {
       }
     }
 
-    // 6. If the time is out of range or totalTimeSpent is less/equal, create a new analytics document.
+    // 7. If the time is out of range or totalTimeSpent is less/equal, create a new analytics document.
     console.log("Creating a new record...");
     const analyticsDoc = new UserActivityPdf({
       userVisit: userVisit._id,
@@ -237,11 +253,12 @@ exports.getAnalyticsPdf = async (req, res) => {
       outTime: now,
       mostVisitedPage,
       linkClicks,
+      absenceHistory,
     });
 
     await analyticsDoc.save();
 
-    // 7. Return the created record.
+    // 8. Return the created record.
     res.status(200).json({
       message: "New record created successfully",
       PdfAnalyticsdata: analyticsDoc,
@@ -251,6 +268,7 @@ exports.getAnalyticsPdf = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 exports.NewUserCount = async (req, res) => {
   try {
