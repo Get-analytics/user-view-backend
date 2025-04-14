@@ -354,6 +354,7 @@ exports.webViewAnalytics = async (req, res) => {
       pointerHeatmap,
       webId,
       sourceUrl,
+      absenceHistory = []  // Added absenceHistory similar to PDF analytics
     } = req.body;
 
     // Validate required fields
@@ -366,7 +367,7 @@ exports.webViewAnalytics = async (req, res) => {
       ? pointerHeatmap
       : [];
 
-    // Fetch the current location dynamically if not provided
+    // Fetch current location dynamically if not provided
     let currentLocation = location;
     if (!location) {
       // Assume a function `getUserLocation(ip)` exists to get the location from the IP
@@ -398,37 +399,57 @@ exports.webViewAnalytics = async (req, res) => {
       outTime: -1,
     });
 
-    if (latestRecord) {
-      const timeDiff = now - latestRecord.outTime;
-      console.log(timeDiff, "timediff");
+    // 5. Determine the correct compareTime for calculating the inactivity gap
+    let compareTime = null;
+    if (absenceHistory.length > 0) {
+      // Use the returnTime from the most recent absence
+      const latestAbsence = absenceHistory[absenceHistory.length - 1];
+      if (latestAbsence.returnTime) {
+        compareTime = new Date(latestAbsence.returnTime);
+      }
+    } else if (latestRecord?.outTime) {
+      compareTime = new Date(latestRecord.outTime);
+    }
 
-      // 5. If session is within 10s-25s and totalTimeSpent is greater, update the record
-      if (timeDiff >= 0 && timeDiff <= 50000) {
-        if (totalTimeSpent > latestRecord.totalTimeSpent) {
-          console.log("Updating existing WebAnalytics record...");
+    // 6. Calculate timeDiff from the compareTime if available
+    let timeDiff = null;
+    if (compareTime) {
+      timeDiff = now - compareTime;
+      console.log(compareTime, "compare time");
+      console.log(now, "now time");
+      console.log(timeDiff, "time diff");
+    }
 
-          // Update the latest record with the new request data
-          await WebAnalytics.updateOne(
-            { _id: latestRecord._id },
-            {
-              $set: {
-                sourceUrl,
-                outTime: new Date(outTime),
-                totalTimeSpent,
-                pointerHeatmap: validatedPointerHeatmap,
-              },
-            }
-          );
+    // Define your time threshold ranges (adjust these values if needed)
+    const MIN_THRESHOLD_MS = 0; // 10 seconds
+    const MAX_THRESHOLD_MS = 60000; // 50 seconds
 
-          return res.status(200).json({
-            message: "Web analytics record updated successfully",
-            WebAnalyticsData: { ...req.body, outTime },
-          });
-        }
+    // 7. If a record exists and timeDiff is within the threshold, update the record if totalTimeSpent increased
+    if (latestRecord && compareTime && timeDiff >= MIN_THRESHOLD_MS && timeDiff <= MAX_THRESHOLD_MS) {
+      if (totalTimeSpent > latestRecord.totalTimeSpent) {
+        console.log("Updating existing WebAnalytics record...");
+
+        await WebAnalytics.updateOne(
+          { _id: latestRecord._id },
+          {
+            $set: {
+              sourceUrl,
+              outTime: new Date(outTime),
+              totalTimeSpent,
+              pointerHeatmap: validatedPointerHeatmap,
+              absenceHistory,  // persist absence details for future calculations
+            },
+          }
+        );
+
+        return res.status(200).json({
+          message: "Web analytics record updated successfully",
+          WebAnalyticsData: { ...req.body, outTime },
+        });
       }
     }
 
-    // 6. If session is out of range or totalTimeSpent is not greater, create a new record
+    // 8. Otherwise, create a new analytics record
     console.log("Creating a new WebAnalytics record...");
     const webAnalyticsData = new WebAnalytics({
       userVisit: userVisit._id, // Link to UserVisit
@@ -439,9 +460,9 @@ exports.webViewAnalytics = async (req, res) => {
       outTime: new Date(outTime),
       totalTimeSpent: totalTimeSpent || 0,
       pointerHeatmap: validatedPointerHeatmap,
+      absenceHistory,  // include absence data
     });
 
-    // 7. Save the new WebAnalytics entry
     await webAnalyticsData.save();
 
     res.status(200).json({
@@ -453,6 +474,7 @@ exports.webViewAnalytics = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 
 
