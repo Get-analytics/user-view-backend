@@ -134,12 +134,6 @@ exports.userIdentification = async (req, res) => {
 };
 
 
-
-
-
-
-
-
 exports.getAnalyticsPdf = async (req, res) => {
   console.log(req.body);
 
@@ -159,7 +153,7 @@ exports.getAnalyticsPdf = async (req, res) => {
     selectedTexts,
     totalClicks,
     mostVisitedPage,
-    linkClicks,
+    linkClicks, // incoming linkClicks from the request
     absenceHistory = [],
   } = req.body;
 
@@ -187,9 +181,8 @@ exports.getAnalyticsPdf = async (req, res) => {
     // 4. Find the latest analytics record for the user and pdfId.
     const latestRecord = await UserActivityPdf.findOne({ userId, pdfId }).sort({ outTime: -1 });
 
-    // 5. Determine the correct time to use for diff calculation
+    // 5. Determine the correct time to use for diff calculation.
     let compareTime = null;
-
     if (absenceHistory.length > 0) {
       const latestAbsence = absenceHistory[absenceHistory.length - 1];
       if (latestAbsence.returnTime) {
@@ -201,16 +194,37 @@ exports.getAnalyticsPdf = async (req, res) => {
 
     if (latestRecord && compareTime) {
       const timeDiff = now - compareTime;
-      console.log(compareTime, "compare time")
-      console.log(now, "now time")
+      console.log(compareTime, "compare time");
+      console.log(now, "now time");
       console.log(timeDiff, "timediff");
 
-      // 6. If the time difference is between 10s and 60s and totalTimeSpent is greater, update the last record.
+      // 6. If the time difference is between 0 and 60s then check totalTimeSpent.
       if (timeDiff >= 0 && timeDiff <= 60000) {
-        if (totalTimeSpent > latestRecord.totalTimeSpent) {
+        // Check if totalTimeSpent is greater and the difference is at least 7 seconds.
+        if (
+          totalTimeSpent > latestRecord.totalTimeSpent 
+        ) {
           console.log("Updating existing record...");
 
-          // Update the latest record with the new request data
+          // Filter out duplicate link clicks (check if the same page and clickedLink already exists)
+          let newLinkClicks = linkClicks;
+          if (Array.isArray(latestRecord.linkClicks) && latestRecord.linkClicks.length > 0) {
+            newLinkClicks = linkClicks.filter((click) => {
+              // Return only clicks that are not already present in the stored linkClicks.
+              return !latestRecord.linkClicks.some(
+                (existing) =>
+                  existing.page === click.page &&
+                  existing.clickedLink === click.clickedLink
+              );
+            });
+          }
+
+          // Merge the existing linkClicks and only the new (non-duplicate) ones.
+          const updatedLinkClicks = Array.isArray(latestRecord.linkClicks)
+            ? [...latestRecord.linkClicks, ...newLinkClicks]
+            : newLinkClicks;
+
+          // Update the latest record with the new request data.
           await UserActivityPdf.updateOne(
             { _id: latestRecord._id },
             {
@@ -223,7 +237,7 @@ exports.getAnalyticsPdf = async (req, res) => {
                 totalClicks,
                 outTime: now,
                 mostVisitedPage,
-                linkClicks,
+                linkClicks: updatedLinkClicks,
                 absenceHistory,
               },
             }
@@ -233,12 +247,21 @@ exports.getAnalyticsPdf = async (req, res) => {
             message: "Record updated successfully",
             PdfAnalyticsdata: { ...req.body, outTime: now },
           });
+        } else {
+          // handle something better
+          return res.status(500).json({
+            message: "Record mismatched with time spend",
+          });
         }
       }
     }
 
     // 7. If the time is out of range or totalTimeSpent is less/equal, create a new analytics document.
     console.log("Creating a new record...");
+
+    // (Optional) You might also filter duplicate link clicks before saving a new record.
+    const filteredLinkClicks = linkClicks; // Modify this if further duplicate handling is needed.
+
     const analyticsDoc = new UserActivityPdf({
       userVisit: userVisit._id,
       userId,
@@ -252,7 +275,7 @@ exports.getAnalyticsPdf = async (req, res) => {
       inTime: now,
       outTime: now,
       mostVisitedPage,
-      linkClicks,
+      linkClicks: filteredLinkClicks,
       absenceHistory,
     });
 
