@@ -331,31 +331,27 @@ exports.webViewAnalytics = async (req, res) => {
       totalTimeSpent,
       pointerHeatmap,
       webId,
+      sessionId, // <-- NEW
       sourceUrl,
-      absenceHistory = []  // Added absenceHistory similar to PDF analytics
+      absenceHistory = [],
     } = req.body;
 
     // Validate required fields
-    if (!userId || !webId || !sourceUrl || !inTime || !outTime) {
-      return res.status(400).json({ message: "Missing required fields" });
+    if (!userId || !webId || !sourceUrl || !inTime || !outTime || !sessionId) {
+      return res.status(400).json({ message: "Missing required fields including sessionId" });
     }
 
-    // Ensure pointerHeatmap is an array
-    const validatedPointerHeatmap = Array.isArray(pointerHeatmap)
-      ? pointerHeatmap
-      : [];
+    const validatedPointerHeatmap = Array.isArray(pointerHeatmap) ? pointerHeatmap : [];
 
-    // Fetch current location dynamically if not provided
+    // Fallback for location using IP (assume function exists)
     let currentLocation = location;
     if (!location) {
-      // Assume a function `getUserLocation(ip)` exists to get the location from the IP
-      currentLocation = await getUserLocation(ip);
+      currentLocation = await getUserLocation(ip); // you should define this if it's not already
     }
 
-    // 1. Fetch the latest UserVisit for this user
+    // Fetch or create UserVisit
     let userVisit = await UserVisit.findOne({ userId }).sort({ createdAt: -1 });
 
-    // 2. If no previous visit exists or the location has changed, create a new UserVisit entry
     if (!userVisit || userVisit.location !== currentLocation) {
       userVisit = new UserVisit({
         ip,
@@ -369,82 +365,53 @@ exports.webViewAnalytics = async (req, res) => {
       await userVisit.save();
     }
 
-    // 3. Get the current timestamp
     const now = new Date();
 
-    // 4. Fetch the latest analytics record for this user and webId
-    const latestRecord = await WebAnalytics.findOne({ userId, webId }).sort({
-      outTime: -1,
-    });
+    // 🔍 Check for existing session first
+    const existingSession = await WebAnalytics.findOne({ sessionId, userId, webId });
 
-    // 5. Determine the correct compareTime for calculating the inactivity gap
-    let compareTime = null;
-    if (absenceHistory.length > 0) {
-      // Use the returnTime from the most recent absence
-      const latestAbsence = absenceHistory[absenceHistory.length - 1];
-      if (latestAbsence.returnTime) {
-        compareTime = new Date(latestAbsence.returnTime);
-      }
-    } else if (latestRecord?.outTime) {
-      compareTime = new Date(latestRecord.outTime);
+    if (existingSession) {
+      console.log("Existing session found. Updating WebAnalytics record...");
+
+      await WebAnalytics.updateOne(
+        { _id: existingSession._id },
+        {
+          $set: {
+            sourceUrl,
+            outTime: new Date(outTime),
+            totalTimeSpent,
+            pointerHeatmap: validatedPointerHeatmap,
+            absenceHistory,
+          },
+        }
+      );
+
+      return res.status(200).json({
+        message: "Session updated successfully",
+        WebAnalyticsData: { ...req.body, outTime },
+      });
     }
 
-    // 6. Calculate timeDiff from the compareTime if available
-    let timeDiff = null;
-    if (compareTime) {
-      timeDiff = now - compareTime;
-      console.log(compareTime, "compare time");
-      console.log(now, "now time");
-      console.log(timeDiff, "time diff");
-    }
+    // No existing session: create new WebAnalytics record
+    console.log("Creating a new WebAnalytics session record...");
 
-    // Define your time threshold ranges (adjust these values if needed)
-    const MIN_THRESHOLD_MS = 0; // 10 seconds
-    const MAX_THRESHOLD_MS = 60000; // 50 seconds
-
-    // 7. If a record exists and timeDiff is within the threshold, update the record if totalTimeSpent increased
-    if (latestRecord && compareTime && timeDiff >= MIN_THRESHOLD_MS && timeDiff <= MAX_THRESHOLD_MS) {
-      if (totalTimeSpent > latestRecord.totalTimeSpent) {
-        console.log("Updating existing WebAnalytics record...");
-
-        await WebAnalytics.updateOne(
-          { _id: latestRecord._id },
-          {
-            $set: {
-              sourceUrl,
-              outTime: new Date(outTime),
-              totalTimeSpent,
-              pointerHeatmap: validatedPointerHeatmap,
-              absenceHistory,  // persist absence details for future calculations
-            },
-          }
-        );
-
-        return res.status(200).json({
-          message: "Web analytics record updated successfully",
-          WebAnalyticsData: { ...req.body, outTime },
-        });
-      }
-    }
-
-    // 8. Otherwise, create a new analytics record
-    console.log("Creating a new WebAnalytics record...");
     const webAnalyticsData = new WebAnalytics({
-      userVisit: userVisit._id, // Link to UserVisit
+      userVisit: userVisit._id,
       userId,
+      sessionId, // <-- NEW
       webId,
       sourceUrl,
       inTime: new Date(inTime),
       outTime: new Date(outTime),
       totalTimeSpent: totalTimeSpent || 0,
       pointerHeatmap: validatedPointerHeatmap,
-      absenceHistory,  // include absence data
+      absenceHistory,
     });
 
     await webAnalyticsData.save();
 
-    res.status(200).json({
-      message: "New Web analytics record created successfully",
+    return res.status(200).json({
+      message: "New Web analytics session created successfully",
       WebAnalyticsData: webAnalyticsData,
     });
   } catch (error) {
@@ -452,6 +419,7 @@ exports.webViewAnalytics = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 
 
