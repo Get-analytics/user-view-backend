@@ -23,6 +23,7 @@ const analyticsSchema = new mongoose.Schema(
       required: true
     },
     userId: { type: String, required: true }, // Add userId field to store the user ID
+    sessionId: { type: String, required: true },
     pdfId: { type: String, required: true },
     sourceUrl: { type: String, required: true },
     totalPagesVisited: { type: Number, required: true },
