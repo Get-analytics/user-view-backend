@@ -199,7 +199,7 @@ exports.getAnalyticsPdf = async (req, res) => {
       console.log(timeDiff, "timediff");
 
       // 6. If the time difference is between 0 and 60s then check totalTimeSpent.
-      if (timeDiff >= 0 && timeDiff <= 60000) {
+     if (timeDiff >= 0 && timeDiff <= 60000 || timeDiff >= 0 && timeDiff <= 90000) {
         // Check if totalTimeSpent is greater and the difference is at least 7 seconds.
         if (
           totalTimeSpent > latestRecord.totalTimeSpent 
