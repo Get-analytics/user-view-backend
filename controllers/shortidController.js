@@ -468,7 +468,8 @@ exports.Docxanalytics = async (req, res) => {
     os,
     device,
     browser,
-    pdfId, // Treating pdfId as a document ID, rename to docxId for consistency
+    pdfId: docxId, // Rename to docxId for clarity
+    sessionId, // <-- NEW
     sourceUrl,
     totalPagesVisited,
     totalTimeSpent,
@@ -476,74 +477,73 @@ exports.Docxanalytics = async (req, res) => {
     selectedTexts,
     totalClicks,
     mostVisitedPage,
-    linkClicks,
+    linkClicks = [],
   } = req.body;
 
+  if (!sessionId || !userId || !docxId) {
+    return res.status(400).json({ message: "Missing sessionId, userId, or docxId" });
+  }
+
   try {
-    // 1. Fetch the latest UserVisit for the user.
+    // 1. Fetch or create UserVisit
     let userVisit = await UserVisit.findOne({ userId }).sort({ createdAt: -1 });
 
-    // 2. If no previous visit exists or if the location has changed, create a new UserVisit entry.
     if (!userVisit || userVisit.location !== location) {
-      userVisit = new UserVisit({
-        ip,
-        location,
-        userId,
-        region,
-        os,
-        device,
-        browser,
-      });
+      userVisit = new UserVisit({ ip, location, userId, region, os, device, browser });
       await userVisit.save();
     }
 
-    // 3. Get the current timestamp.
+    // 2. Check for existing session analytics
+    const existingSession = await DocxAnalytics.findOne({ sessionId, userId, pdfId: docxId });
+
     const now = new Date();
 
-    // 4. Fetch the latest analytics record for this user and document (docxId).
-    const latestRecord = await DocxAnalytics.findOne({ userId, pdfId }).sort({ outTime: -1 });
+    if (existingSession) {
+      console.log("Existing Docx session found. Updating...");
 
-    if (latestRecord) {
-      const timeDiff = now - latestRecord.outTime;
-      console.log(timeDiff, "timediff");
+      // Filter out duplicate link clicks
+      const newLinkClicks = linkClicks.filter((click) =>
+        !existingSession.linkClicks?.some(
+          (existing) =>
+            existing.page === click.page &&
+            existing.clickedLink === click.clickedLink
+        )
+      );
 
-      // 5. If the time difference is between 100ms and 60s and totalTimeSpent is greater, update the last record.
-      if (timeDiff >= 0 && timeDiff <= 60000) {
-        if (totalTimeSpent > latestRecord.totalTimeSpent) {
-          console.log("Updating existing DocxAnalytics record...");
+      const updatedLinkClicks = [...(existingSession.linkClicks || []), ...newLinkClicks];
 
-          // Update the latest record with the new request data
-          await DocxAnalytics.updateOne(
-            { _id: latestRecord._id },
-            {
-              $set: {
-                sourceUrl,
-                totalPagesVisited,
-                totalTimeSpent,
-                pageTimeSpent,
-                selectedTexts,
-                totalClicks,
-                outTime: now, // Update outTime with the current timestamp
-                mostVisitedPage,
-                linkClicks,
-              },
-            }
-          );
-
-          return res.status(200).json({
-            message: "DocxAnalytics record updated successfully",
-            DocxAnalyticsdata: { ...req.body, outTime: now },
-          });
+      await DocxAnalytics.updateOne(
+        { _id: existingSession._id },
+        {
+          $set: {
+            sourceUrl,
+            totalPagesVisited,
+            totalTimeSpent,
+            pageTimeSpent,
+            selectedTexts,
+            totalClicks,
+            outTime: now,
+            mostVisitedPage,
+            linkClicks: updatedLinkClicks,
+          },
         }
-      }
+      );
+
+      return res.status(200).json({
+        message: "DocxAnalytics session updated successfully",
+        DocxAnalyticsdata: { ...req.body, outTime: now },
+      });
     }
 
-    // 6. If the time is out of range or totalTimeSpent is less/equal, create a new analytics document.
-    console.log("Creating a new DocxAnalytics record...");
+    // 3. No existing session, create new record
+    console.log("Creating new DocxAnalytics session record...");
+
     const analyticsData = new DocxAnalytics({
+      
       userVisit: userVisit._id,
       userId,
-      pdfId, // Consider renaming to docxId in the DB model for clarity
+      sessionId, // <-- Save sessionId
+      pdfId: docxId,
       sourceUrl,
       totalPagesVisited,
       totalTimeSpent,
@@ -558,10 +558,9 @@ exports.Docxanalytics = async (req, res) => {
 
     await analyticsData.save();
 
-    // 7. Return the created record.
-    console.log(analyticsData, "New Docx analytics data inserted");
+    console.log("New Docx analytics data inserted:", analyticsData);
     res.status(200).json({
-      message: "New DocxAnalytics record created successfully",
+      message: "New DocxAnalytics session created successfully",
       DocxAnalyticsdata: analyticsData,
     });
   } catch (error) {
